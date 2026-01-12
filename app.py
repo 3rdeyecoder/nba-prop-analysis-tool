@@ -2,19 +2,109 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import streamlit as st
+import streamlit.components.v1 as components
 
-from nba_api.stats.endpoints import leaguegamelog
+from nba_api.stats.endpoints import leaguegamelog, commonplayerinfo
 from nba_api.stats.static import players
 
-# ----------------------------
-# Page setup
-# ----------------------------
-st.set_page_config(page_title="NBA Props Tool", layout="wide")
-st.title("NBA Props Tool (Live Web App)")
+# ============================
+# Page setup (mobile + style)
+# ============================
+st.set_page_config(page_title="NBA Betting Tool", layout="centered")
 
-# ----------------------------
-# Config / Maps
-# ----------------------------
+st.markdown(
+    """
+    <style>
+      :root{
+        --bg1:#0b1020;
+        --bg2:#101a33;
+        --border:#2a3a66;
+        --text:#e8eeff;
+        --muted:#a9b7e6;
+        --good:#27e98a;
+        --bad:#ff4d6d;
+        --mid:#a0a0b8;
+      }
+
+      .stApp {
+        background: radial-gradient(1200px 600px at 20% 0%, rgba(124,92,255,.25), transparent 55%),
+                    radial-gradient(900px 500px at 85% 15%, rgba(46,233,255,.18), transparent 55%),
+                    linear-gradient(180deg, var(--bg1), var(--bg2));
+        color: var(--text);
+      }
+
+      .block-container { padding-top: 1rem; padding-bottom: 2rem; }
+
+      .hero {
+        padding: 14px 16px;
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: linear-gradient(135deg, rgba(124,92,255,.18), rgba(46,233,255,.10));
+        box-shadow: 0 10px 30px rgba(0,0,0,.25);
+        margin-bottom: 10px;
+      }
+      .hero h1 { margin: 0; font-size: 1.55rem; line-height: 1.2; }
+      .hero p  { margin: 6px 0 0 0; color: var(--muted); font-size: 0.95rem; }
+
+      details {
+        border-radius: 18px !important;
+        border: 1px solid var(--border) !important;
+        background: rgba(15, 23, 48, .55) !important;
+        padding: 8px 10px !important;
+      }
+
+      div[data-testid="stMetric"] {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 10px 12px;
+        background: rgba(15, 23, 48, .65);
+      }
+      div[data-testid="stMetric"] label { color: var(--muted) !important; }
+
+      .pill-row { display:flex; gap:10px; flex-wrap:wrap; margin: 6px 0 8px 0; }
+      .pill {
+        border: 1px solid var(--border);
+        background: rgba(15, 23, 48, .55);
+        padding: 7px 10px;
+        border-radius: 999px;
+        font-size: 0.92rem;
+        color: var(--text);
+      }
+      .pill.good { border-color: rgba(39,233,138,.4); }
+      .pill.bad  { border-color: rgba(255,77,109,.45); }
+      .pill.mid  { border-color: rgba(160,160,184,.35); }
+
+      .stButton>button {
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: linear-gradient(135deg, rgba(124,92,255,.85), rgba(46,233,255,.45));
+        color: white;
+        font-weight: 700;
+      }
+
+      @media (max-width: 768px) {
+        .block-container { padding-left: 0.9rem; padding-right: 0.9rem; }
+      }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+APP_BASE_URL = "https://nbabetting.streamlit.app"
+
+st.markdown(
+    """
+    <div class="hero">
+      <h1>🏀 NBA Betting Tool</h1>
+      <p>All dropdowns are searchable: tap a dropdown, then type. Filters + hit rates + streaks + share links.</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# ============================
+# Config
+# ============================
 STAT_MAP = {
     "Points": "PTS",
     "Rebounds": "REB",
@@ -36,61 +126,192 @@ DISPLAY_COLS = [
     "FG3M", "STL", "BLK", "TOV"
 ]
 
-# ----------------------------
-# Helpers (cached)
-# ----------------------------
+def season_options():
+    # Default should start at 2025-26 (not 2024-25)
+    return ["2025-26", "2024-25", "2023-24", "2022-23", "2021-22", "2020-21", "2019-20"]
+
+# ============================
+# Helpers
+# ============================
 @st.cache_data(ttl=60 * 60)
 def get_all_players():
     return players.get_players()
 
 @st.cache_data(ttl=60 * 30)
-def fetch_player_gamelog(season: str) -> pd.DataFrame:
-    """
-    Fetch PLAYER game logs for an entire season.
-    This can be large, so caching matters.
-    """
+def fetch_league_player_gamelog(season: str) -> pd.DataFrame:
     gl = leaguegamelog.LeagueGameLog(
         season=season,
         season_type_all_star="Regular Season",
-        player_or_team_abbreviation="P"  # important: PLAYER logs
+        player_or_team_abbreviation="P"
     )
-    df = gl.get_data_frames()[0]
-    return df
+    return gl.get_data_frames()[0]
 
-def season_options():
-    return ["2025-26", "2024-25", "2023-24", "2022-23", "2021-22", "2020-21", "2019-20"]
+@st.cache_data(ttl=60 * 60)
+def fetch_player_team_info(player_id: int) -> dict:
+    info = commonplayerinfo.CommonPlayerInfo(player_id=player_id).get_data_frames()[0]
+    if info is None or info.empty:
+        return {}
+    row = info.iloc[0].to_dict()
+    team_id = row.get("TEAM_ID", 0)
+    try:
+        team_id = int(team_id) if pd.notna(team_id) else 0
+    except Exception:
+        team_id = 0
+    return {
+        "TEAM_ID": team_id,
+        "TEAM_ABBREVIATION": str(row.get("TEAM_ABBREVIATION", "")),
+        "TEAM_NAME": str(row.get("TEAM_NAME", "")),
+    }
 
-def get_player_id(player_list, name: str):
-    for p in player_list:
-        if p["full_name"] == name:
-            return p["id"]
-    return None
+def make_opponent(df: pd.DataFrame) -> pd.Series:
+    return df["MATCHUP"].astype(str).str.split().str[-1]
 
-# ----------------------------
-# Sidebar UI
-# ----------------------------
-with st.sidebar:
-    st.header("Filters")
+def compute_streak(values: pd.Series, line_value: float) -> tuple[str, int]:
+    if values.empty:
+        return ("None", 0)
+    latest = values.iloc[0]
+    if latest > line_value:
+        label = "Over"
+        cond = values > line_value
+    elif latest < line_value:
+        label = "Under"
+        cond = values < line_value
+    else:
+        label = "Push"
+        cond = values == line_value
 
-    season = st.selectbox("Season", season_options(), index=1, key="season_select")
+    count = 0
+    for ok in cond.tolist():
+        if ok:
+            count += 1
+        else:
+            break
+    return (label, count)
 
-    player_list = get_all_players()
-    player_names = sorted([p["full_name"] for p in player_list])
-    player_name = st.selectbox("Player", player_names, key="player_select")
+def pill_html(text: str, cls: str = "mid") -> str:
+    return f'<span class="pill {cls}">{text}</span>'
 
-    stat_label = st.selectbox("Stat", list(STAT_MAP.keys()), key="stat_select")
-    stat_col = STAT_MAP[stat_label]
+def build_share_url(base_url: str, params: dict) -> str:
+    from urllib.parse import urlencode
+    return base_url.rstrip("/") + "/?" + urlencode(params)
 
-    num_games = st.selectbox("# Games", [5, 10, 15, 20, "All"], index=1, key="num_games_select")
-    location = st.selectbox("Location", ["All", "Home", "Away"], index=0, key="location_select")
+def copy_to_clipboard_button(text: str, button_label: str = "Copy share link"):
+    safe = text.replace("\\", "\\\\").replace("`", "\\`")
+    html = f"""
+    <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <button id="copyBtn"
+        style="
+          padding:10px 14px; border-radius:14px; border:1px solid rgba(42,58,102,.9);
+          background: linear-gradient(135deg, rgba(124,92,255,.85), rgba(46,233,255,.45));
+          color:white; font-weight:700; cursor:pointer;">
+        {button_label}
+      </button>
+      <span id="copyMsg" style="color: rgba(169,183,230,1); font-size: 0.92rem;"></span>
+    </div>
+    <script>
+      const btn = document.getElementById("copyBtn");
+      const msg = document.getElementById("copyMsg");
+      btn.onclick = async () => {{
+        try {{
+          await navigator.clipboard.writeText(`{safe}`);
+          msg.textContent = "Copied ✅";
+          setTimeout(() => msg.textContent = "", 1500);
+        }} catch (e) {{
+          msg.textContent = "Copy failed — select the link and copy manually.";
+        }}
+      }};
+    </script>
+    """
+    components.html(html, height=55)
 
-    line_value = st.number_input("Line (for Over/Under)", value=0.0, step=0.5, key="line_value")
+# ============================
+# Query params (share links)
+# ============================
+qp = dict(st.query_params)
 
-# ----------------------------
-# Load data
-# ----------------------------
-df = fetch_player_gamelog(season)
+def qp_get(key: str, default: str):
+    v = qp.get(key, default)
+    if isinstance(v, list):
+        return v[0] if v else default
+    return v
 
+# ✅ Default season changed to 2025-26
+default_season = qp_get("season", "2025-26")
+default_player_name = qp_get("player_name", "")
+default_stat = qp_get("stat", "Points")
+default_games = qp_get("games", "10")
+default_loc = qp_get("loc", "All")
+default_opp = qp_get("opp", "All")
+default_line = qp_get("line", "0")
+
+# ============================
+# Player list
+# ============================
+player_list = get_all_players()
+player_names = sorted([p["full_name"] for p in player_list])
+
+# ============================
+# Filters UI (Opponent visible here too)
+# We create a placeholder INSIDE the expander for Opponent,
+# then fill it once the opponent list is computed.
+# ============================
+seasons = season_options()
+stat_keys = list(STAT_MAP.keys())
+games_options = [5, 10, 15, 20, "All"]
+loc_options = ["All", "Home", "Away"]
+
+season_index = seasons.index(default_season) if default_season in seasons else 0
+stat_index = stat_keys.index(default_stat) if default_stat in stat_keys else 0
+
+if str(default_games).isdigit() and int(default_games) in [5, 10, 15, 20]:
+    games_index = games_options.index(int(default_games))
+elif default_games == "All":
+    games_index = games_options.index("All")
+else:
+    games_index = 1
+
+loc_index = loc_options.index(default_loc) if default_loc in loc_options else 0
+
+try:
+    line_default = float(default_line)
+except Exception:
+    line_default = 0.0
+
+player_index = player_names.index(default_player_name) if default_player_name in player_names else 0
+
+with st.expander("🎛️ Filters", expanded=True):
+    season = st.selectbox("Season", seasons, index=season_index, key="season_select")
+    player_name = st.selectbox("Player (tap + type to search)", player_names, index=player_index, key="player_select")
+    stat_label = st.selectbox("Stat", stat_keys, index=stat_index, key="stat_select")
+
+    c1, c2 = st.columns(2)
+    with c1:
+        num_games = st.selectbox("# Games", games_options, index=games_index, key="games_select")
+    with c2:
+        location = st.selectbox("Location", loc_options, index=loc_index, key="loc_select")
+
+    line_value = st.number_input("Line (for Over/Under)", value=line_default, step=0.5, key="line_input")
+
+    st.caption("Opponent is searchable too: tap it and type (BOS, LAL, DEN, etc.)")
+    opp_placeholder = st.empty()
+
+# ============================
+# Identify player_id
+# ============================
+player_id = None
+for p in player_list:
+    if p["full_name"] == player_name:
+        player_id = p["id"]
+        break
+
+if player_id is None:
+    st.error("Player not found.")
+    st.stop()
+
+# ============================
+# Load season data + player games
+# ============================
+df = fetch_league_player_gamelog(season)
 if df is None or df.empty:
     st.error("No data returned from NBA API for this season.")
     st.stop()
@@ -99,125 +320,193 @@ if "PLAYER_ID" not in df.columns:
     st.error(f"PLAYER_ID missing from data. Columns returned: {list(df.columns)}")
     st.stop()
 
-player_id = get_player_id(player_list, player_name)
-if player_id is None:
-    st.error("Player not found.")
+pdf_all = df[df["PLAYER_ID"] == player_id].copy()
+if pdf_all.empty:
+    st.warning("No games found for this player in this season.")
     st.stop()
 
-# ----------------------------
-# Build base dataframe for dropdowns
-# ----------------------------
-base_pdf = df[df["PLAYER_ID"] == player_id].copy()
+pdf_all["GAME_DATE"] = pd.to_datetime(pdf_all["GAME_DATE"], errors="coerce")
+pdf_all["OPPONENT"] = make_opponent(pdf_all)
 
-if base_pdf.empty:
-    st.warning("No games found for this player in this season (or NBA API returned no rows).")
-    st.stop()
-
-# Add GAME_DATE as datetime
-base_pdf["GAME_DATE"] = pd.to_datetime(base_pdf["GAME_DATE"], errors="coerce")
-
-# Home/Away filtering (apply before opponent list so it matches)
+# Build opponent list based on LOCATION first (so it matches location filter)
+pdf_loc = pdf_all.copy()
 if location == "Home":
-    # Many logs use "vs." for home
-    base_pdf = base_pdf[base_pdf["MATCHUP"].str.contains("vs", na=False)]
+    pdf_loc = pdf_loc[pdf_loc["MATCHUP"].str.contains("vs", na=False)]
 elif location == "Away":
-    base_pdf = base_pdf[base_pdf["MATCHUP"].str.contains("@", na=False)]
+    pdf_loc = pdf_loc[pdf_loc["MATCHUP"].str.contains("@", na=False)]
 
-# Opponent extraction (robust)
-# MATCHUP examples: "LAL vs. BOS" or "LAL @ BOS" -> opponent is last token
-base_pdf["OPPONENT"] = base_pdf["MATCHUP"].astype(str).str.split().str[-1]
+opp_list = sorted(pdf_loc["OPPONENT"].dropna().unique().tolist())
+if len(opp_list) == 0:
+    opp_list = sorted(pdf_all["OPPONENT"].dropna().unique().tolist())
 
-# Combo stats
-base_pdf["PTS"] = base_pdf["PTS"].astype(float)
-base_pdf["REB"] = base_pdf["REB"].astype(float)
-base_pdf["AST"] = base_pdf["AST"].astype(float)
+opp_choices = ["All"] + opp_list
+opp_default_index = opp_choices.index(default_opp) if default_opp in opp_choices else 0
 
-base_pdf["PRA"] = base_pdf["PTS"] + base_pdf["REB"] + base_pdf["AST"]
-base_pdf["PR"] = base_pdf["PTS"] + base_pdf["REB"]
-base_pdf["RA"] = base_pdf["REB"] + base_pdf["AST"]
-base_pdf["PA"] = base_pdf["PTS"] + base_pdf["AST"]
+# Render Opponent INSIDE the Filters expander via placeholder
+with opp_placeholder.container():
+    opp = st.selectbox(
+        "Opponent (tap + type to search)",
+        opp_choices,
+        index=opp_default_index,
+        key="opp_select"
+    )
 
-# Sort newest -> oldest
-base_pdf = base_pdf.sort_values("GAME_DATE", ascending=False)
+# ============================
+# Player/team visuals (headshot + logo row)
+# ============================
+team_info = fetch_player_team_info(player_id)
+team_id = int(team_info.get("TEAM_ID", 0) or 0)
+team_abbr = team_info.get("TEAM_ABBREVIATION", "")
+team_name = team_info.get("TEAM_NAME", "")
 
-# ----------------------------
-# Opponent dropdown (must come AFTER we know base_pdf)
-# ----------------------------
-opp_choices = ["All"] + sorted(base_pdf["OPPONENT"].dropna().unique().tolist())
-opp = st.sidebar.selectbox("Opponent", opp_choices, index=0, key="opponent_filter")
+headshot_url = f"https://cdn.nba.com/headshots/nba/latest/260x190/{player_id}.png"
+logo_url = f"https://cdn.nba.com/logos/nba/{team_id}/primary/L/logo.svg" if team_id else ""
 
-# Now apply opponent filter to working df
-pdf = base_pdf.copy()
+c1, c2, c3 = st.columns([1, 1, 2])
+with c1:
+    if logo_url:
+        st.image(logo_url, use_container_width=True)
+with c2:
+    st.image(headshot_url, use_container_width=True)
+with c3:
+    st.markdown(f"### {player_name}")
+    if team_name or team_abbr:
+        st.caption(f"{team_name} {f'({team_abbr})' if team_abbr else ''}")
+    st.caption(f"Season: {season} • Stat: {stat_label} • Location: {location} • Opp: {opp}")
+
+# ============================
+# Prep stats and filter analysis df
+# ============================
+for col in ["PTS", "REB", "AST", "FG3M", "STL", "BLK", "TOV", "MIN"]:
+    if col in pdf_all.columns:
+        pdf_all[col] = pd.to_numeric(pdf_all[col], errors="coerce")
+
+pdf_all["PRA"] = pdf_all["PTS"] + pdf_all["REB"] + pdf_all["AST"]
+pdf_all["PR"]  = pdf_all["PTS"] + pdf_all["REB"]
+pdf_all["RA"]  = pdf_all["REB"] + pdf_all["AST"]
+pdf_all["PA"]  = pdf_all["PTS"] + pdf_all["AST"]
+
+pdf_all = pdf_all.sort_values("GAME_DATE", ascending=False)
+
+pdf = pdf_all.copy()
+if location == "Home":
+    pdf = pdf[pdf["MATCHUP"].str.contains("vs", na=False)]
+elif location == "Away":
+    pdf = pdf[pdf["MATCHUP"].str.contains("@", na=False)]
+
 if opp != "All":
     pdf = pdf[pdf["OPPONENT"] == opp]
 
-# Limit games after opponent selection
 if num_games != "All":
     pdf = pdf.head(int(num_games))
 
 if pdf.empty:
-    st.warning("No games found with these filters.")
+    st.warning("No games found with these filters. Try Location = All and Opponent = All.")
     st.stop()
 
-# ----------------------------
-# Calculate Over/Under
-# ----------------------------
+stat_col = STAT_MAP[stat_label]
 series = pd.to_numeric(pdf[stat_col], errors="coerce").dropna()
 if series.empty:
     st.warning("Selected stat has no numeric values for these filters.")
     st.stop()
 
+# ============================
+# Hit rates + streak chips
+# ============================
 over = int((series > line_value).sum())
 under = int((series < line_value).sum())
 push = int((series == line_value).sum())
 total = int(series.shape[0])
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Over", f"{over}", f"{(over/total):.0%}")
-c2.metric("Under", f"{under}", f"{(under/total):.0%}")
-c3.metric("Push", f"{push}", f"{(push/total):.0%}")
-c4.metric("Games", f"{total}")
+last5 = series.head(5)
+last5_over = int((last5 > line_value).sum())
+last5_total = int(last5.shape[0])
+last5_rate = (last5_over / last5_total) if last5_total else 0.0
 
-# ----------------------------
-# Games table
-# ----------------------------
-st.subheader("Filtered Games")
-existing_cols = [c for c in DISPLAY_COLS if c in pdf.columns]
-st.dataframe(
-    pdf[existing_cols].sort_values("GAME_DATE", ascending=True),
-    use_container_width=True
-)
+streak_label, streak_count = compute_streak(series, line_value)
+pill_cls = "mid"
+if streak_label == "Over":
+    pill_cls = "good"
+elif streak_label == "Under":
+    pill_cls = "bad"
 
-# ----------------------------
-# Chart
-# ----------------------------
-st.subheader(f"{player_name} — {stat_label} vs Line {line_value}")
+chips = [
+    pill_html(f"🔥 Streak: <strong>{streak_label} x{streak_count}</strong>", pill_cls),
+    pill_html(f"Last 5 Over%: <strong>{last5_rate:.0%}</strong>", "good" if last5_rate >= 0.6 else "mid"),
+    pill_html(f"Filter: <strong>{location}</strong> • Opp: <strong>{opp}</strong>", "mid"),
+]
+st.markdown(f'<div class="pill-row">{"".join(chips)}</div>', unsafe_allow_html=True)
 
-chart_df = pdf.sort_values("GAME_DATE", ascending=True).copy()
-values = pd.to_numeric(chart_df[stat_col], errors="coerce").fillna(0).values
+m1, m2 = st.columns(2)
+m1.metric("Over", f"{over}", f"{(over/total):.0%}")
+m2.metric("Under", f"{under}", f"{(under/total):.0%}")
 
-colors = []
-for v in values:
-    if v > line_value:
-        colors.append("green")
-    elif v < line_value:
-        colors.append("red")
-    else:
-        colors.append("gray")
+m3, m4 = st.columns(2)
+m3.metric("Push", f"{push}", f"{(push/total):.0%}")
+m4.metric("Games", f"{total}")
 
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.bar(np.arange(len(values)), values, color=colors)
-ax.axhline(line_value, linestyle="--")
-ax.set_xlabel("Game (Oldest → Newest)")
-ax.set_ylabel(stat_label)
-ax.set_title("Game-by-game results (color: over/under/push)")
-st.pyplot(fig)
+# ============================
+# Share link
+# ============================
+st.subheader("Share")
 
-# ----------------------------
-# Averages
-# ----------------------------
-st.subheader("Averages (Filtered)")
-avg_cols = ["PTS", "REB", "AST", "PRA", "PR", "RA", "PA", "FG3M", "STL", "BLK", "TOV", "MIN"]
-avg_cols = [c for c in avg_cols if c in pdf.columns]
-avg = pdf[avg_cols].mean(numeric_only=True).round(2)
-st.write(avg)
+share_params = {
+    "season": season,
+    "player_name": player_name,
+    "stat": stat_label,
+    "games": str(num_games),
+    "loc": location,
+    "opp": opp,
+    "line": str(line_value),
+}
+share_url = build_share_url(APP_BASE_URL, share_params)
+st.text_input("Shareable link", share_url, key="share_url_box")
+copy_to_clipboard_button(share_url, "Copy share link")
+
+# ============================
+# Tabs (CHART DEFAULT)
+# Streamlit defaults to the first tab, so we put Chart first.
+# ============================
+tab_chart, tab_summary, tab_games = st.tabs(["Chart", "Summary", "Games"])
+
+with tab_chart:
+    st.subheader(f"{player_name} • {stat_label} • Line {line_value}")
+
+    chart_df = pdf.sort_values("GAME_DATE", ascending=True).copy()
+    values = pd.to_numeric(chart_df[stat_col], errors="coerce").fillna(0).values
+
+    colors = []
+    for v in values:
+        if v > line_value:
+            colors.append("green")
+        elif v < line_value:
+            colors.append("red")
+        else:
+            colors.append("gray")
+
+    fig, ax = plt.subplots(figsize=(8, 3.5))
+    ax.bar(np.arange(len(values)), values, color=colors)
+    ax.axhline(line_value, linestyle="--")
+    ax.set_xlabel("Game (Oldest → Newest)")
+    ax.set_ylabel(stat_label)
+    ax.set_title("Game-by-game results")
+    st.pyplot(fig, use_container_width=True)
+
+with tab_summary:
+    st.subheader("Averages (Filtered)")
+    avg_cols = ["PTS", "REB", "AST", "PRA", "PR", "RA", "PA", "FG3M", "STL", "BLK", "TOV", "MIN"]
+    avg_cols = [c for c in avg_cols if c in pdf.columns]
+    avg = pdf[avg_cols].mean(numeric_only=True).round(2)
+    st.write(avg)
+
+with tab_games:
+    st.subheader("Games")
+    show_recent_only = st.toggle("Show only recent 10 games", value=True, key="recent_toggle")
+    table_df = pdf.head(10) if show_recent_only else pdf.copy()
+
+    existing_cols = [c for c in DISPLAY_COLS if c in table_df.columns]
+    st.dataframe(
+        table_df[existing_cols].sort_values("GAME_DATE", ascending=True),
+        use_container_width=True,
+        height=420
+    )
