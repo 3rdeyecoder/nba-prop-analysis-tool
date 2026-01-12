@@ -10,7 +10,7 @@ from nba_api.stats.static import players
 # ============================
 # GOOGLE ANALYTICS (GA4)
 # ============================
-components.html(
+st.markdown(
     """
     <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-P3ML6DEY01"></script>
@@ -21,7 +21,7 @@ components.html(
       gtag('config', 'G-P3ML6DEY01');
     </script>
     """,
-    height=0,
+    unsafe_allow_html=True,
 )
 
 # ============================
