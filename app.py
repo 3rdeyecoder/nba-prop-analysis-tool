@@ -495,6 +495,45 @@ st.text_input("Shareable link", share_url, key="share_url_box")
 copy_to_clipboard_button(share_url, "Copy share link")
 
 # ============================
+# DONATE (Cash App)
+# ============================
+CASHAPP_CASHTAG = "SpaceShades"  # <-- your Cash App cashtag (no $)
+cashapp_url = f"https://cash.app/${CASHAPP_CASHTAG}"
+
+st.markdown(
+    f"""
+    <div style="
+        border: 1px solid rgba(42,58,102,.9);
+        border-radius: 16px;
+        padding: 14px 14px;
+        background: rgba(15,23,48,.55);
+        margin-top: 10px;">
+      <h3 style="margin:0 0 6px 0;">Support the NBA Betting Tool</h3>
+      <p style="margin:0 0 12px 0; color: rgba(169,183,230,1);">
+        If this helps your research, you can send a tip on Cash App.
+      </p>
+      <a href="{cashapp_url}" target="_blank" rel="noopener noreferrer"
+         style="
+           display:inline-block;
+           padding:10px 14px;
+           border-radius:14px;
+           border:1px solid rgba(42,58,102,.9);
+           background: linear-gradient(135deg, rgba(124,92,255,.85), rgba(46,233,255,.45));
+           color:white;
+           font-weight:900;
+           text-decoration:none;">
+        💚 Tip on Cash App
+      </a>
+      <p style="margin:10px 0 0 0; color: rgba(169,183,230,1); font-size: 0.9rem;">
+        Cash App: ${CASHAPP_CASHTAG}
+      </p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================
 # TABS (CHART DEFAULT)
 # ============================
 tab_chart, tab_summary, tab_games = st.tabs(["Chart", "Summary", "Games"])
