@@ -1,3 +1,20 @@
+# app.py
+# NBA Props Lab — Full Streamlit app using REAL nba_api leaguegamelog data
+# Includes:
+# - Real multi-season leaguegamelog pull (cached)
+# - Defaults season selection to 2025-26
+# - Player headshot (from PLAYER_ID)
+# - Home/Away + Opponent filters derived from MATCHUP
+# - Guaranteed red/green Over/Under bars (per-bar colors)
+# - Trend summary sentence for the selected stat
+# - Tabs + bordered containers + clean captions
+#
+# Requirements (install in your venv):
+#   pip install streamlit nba_api plotly pandas numpy
+#
+# Run:
+#   streamlit run app.py
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -58,22 +75,6 @@ header[data-testid="stHeader"] { height: 0px !important; }
 )
 
 # -------------------------
-# Hero
-# -------------------------
-st.title("🏀 NBA Props Lab")
-st.write("Research player props with trends, distributions, and context. Built for decision-making, not picks.")
-
-st.markdown(
-    """
-<div class="card">
-  <div class="card-title">✨ Quick Start</div>
-  <div class="muted">1) Choose player and stat  ·  2) Filter home/away or opponent  ·  3) Set a line to see red/green Over/Under  ·  4) Read the trend summary</div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
-
-# -------------------------
 # Constants and helpers
 # -------------------------
 ALL_SEASONS = [
@@ -85,9 +86,7 @@ ALL_SEASONS = [
     "2024-25",
     "2025-26",
 ]
-
 DEFAULT_SEASON = "2025-26"
-
 
 STAT_MAP = {
     "PTS": "PTS",
@@ -100,7 +99,6 @@ STAT_MAP = {
     "RA": "RA",
     "BLK+STL": "BLK_STL",
 }
-
 WINDOW_MAP = {"Last 5": 5, "Last 10": 10, "Last 15": 15, "Last 25": 25, "Season": None}
 
 NUM_COLS = [
@@ -150,8 +148,12 @@ def trend_sentence(player_name: str, stat_key: str, s: pd.Series) -> str:
         f"({first:.1f} → {second:.1f} avg from early to late games), {slope_hint}."
     )
 
+@st.cache_data(show_spinner=False)
+def player_headshot_url(player_id: int) -> str:
+    return f"https://cdn.nba.com/headshots/nba/latest/260x190/{int(player_id)}.png"
+
 # -------------------------
-# Load real data from nba_api (your exact approach), cached
+# Load real data (cached)
 # -------------------------
 @st.cache_data(show_spinner=False)
 def load_league_logs(seasons: list[str]) -> pd.DataFrame:
@@ -169,7 +171,6 @@ def load_league_logs(seasons: list[str]) -> pd.DataFrame:
     df_logs = pd.concat(all_logs, ignore_index=True)
     df_logs["GAME_DATE"] = pd.to_datetime(df_logs["GAME_DATE"], errors="coerce")
 
-    # Ensure numeric
     for col in NUM_COLS:
         if col in df_logs.columns:
             df_logs[col] = pd.to_numeric(df_logs[col], errors="coerce")
@@ -182,16 +183,15 @@ def load_league_logs(seasons: list[str]) -> pd.DataFrame:
     df_logs["THREES_MADE"] = df_logs["FG3M"]
     df_logs["BLK_STL"] = df_logs["BLK"] + df_logs["STL"]
 
-    # Derive Home/Away + Opponent from MATCHUP
+    # Context from MATCHUP
     df_logs["IS_HOME"] = df_logs["MATCHUP"].astype(str).str.contains("vs")
     df_logs["OPPONENT"] = df_logs["MATCHUP"].astype(str).str[-3:]
 
-    # Clean
     df_logs = df_logs.dropna(subset=["GAME_DATE", "PLAYER_NAME", "MATCHUP"])
     return df_logs
 
 # -------------------------
-# Sidebar settings and season selector
+# Sidebar
 # -------------------------
 with st.sidebar:
     st.markdown("### ⚙️ Settings")
@@ -199,22 +199,38 @@ with st.sidebar:
     show_raw_table = st.toggle("Show raw table", value=False)
 
     st.markdown("### 🗓️ Season")
-
     seasons = st.multiselect(
-    "Include seasons",
-    options=ALL_SEASONS,
-    default=[DEFAULT_SEASON],
-    help="Currently defaults to the active season. Older seasons are kept for future modeling."
-)
+        "Include seasons",
+        options=ALL_SEASONS,
+        default=[DEFAULT_SEASON],
+        help="Defaults to 2025–26 for now. Older seasons stay available for future ML."
+    )
 
-
-
-# Load data with a progress spinner
+# -------------------------
+# Load data
+# -------------------------
 with st.spinner("Loading NBA game logs..."):
     df_logs = load_league_logs(seasons)
 
 # -------------------------
-# Filters container
+# Hero header
+# -------------------------
+st.title("🏀 NBA Props Lab")
+st.write("Research player props with trends, distributions, and context. Built for decision-making, not picks.")
+st.caption("Default view shows the 2025–26 season for now. Historical seasons will be used later for modeling.")
+
+st.markdown(
+    """
+<div class="card">
+  <div class="card-title">✨ Quick Start</div>
+  <div class="muted">1) Choose player and stat  ·  2) Filter home/away or opponent  ·  3) Set a line to see red/green Over/Under  ·  4) Read the trend summary</div>
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+# -------------------------
+# Filters
 # -------------------------
 with st.container(border=True):
     r1c1, r1c2, r1c3 = st.columns([1.7, 1.0, 1.0])
@@ -272,8 +288,30 @@ with st.container(border=True):
     with c2:
         st.caption("Auto-filled from the average in this view. Change it to match the sportsbook line you are considering.")
 
-# Over/Under label (always created)
 player_df["OU"] = np.where(player_df["SELECTED_STAT"] >= line, "Over", "Under")
+
+# -------------------------
+# Player picture + header card
+# -------------------------
+player_id = int(player_df["PLAYER_ID"].iloc[0])
+headshot = player_headshot_url(player_id)
+
+left, right = st.columns([0.35, 1.65], vertical_alignment="center")
+with left:
+    st.image(headshot, width=120)
+
+with right:
+    venue_text = "All venues" if home_away == "All" else f"{home_away} only"
+    opp_text = "All opponents" if opponent == "All" else f"vs {opponent}"
+    st.markdown(
+        f"""
+<div class="card">
+  <div class="card-title">👤 {player} — {stat} ({window})</div>
+  <div class="muted">{venue_text} · {opp_text} · Seasons: {", ".join(seasons)}</div>
+</div>
+""",
+        unsafe_allow_html=True,
+    )
 
 # -------------------------
 # Summary metrics
@@ -316,6 +354,7 @@ with tab_overview:
         chart_df["VENUE"] = np.where(chart_df["IS_HOME"], "Home", "Away")
 
         colors = np.where(chart_df["OU"].to_numpy() == "Over", "green", "red")
+
         fig = go.Figure()
         fig.add_trace(
             go.Bar(
@@ -411,5 +450,5 @@ with tab_matchup:
 if show_raw_table:
     with st.container(border=True):
         st.subheader("Raw Data (Debug)")
-        st.caption("Use this to confirm columns and troubleshoot filters.")
+        st.caption("Use this to confirm columns and troubleshoot.")
         st.dataframe(df_logs.head(200), use_container_width=True, hide_index=True)
