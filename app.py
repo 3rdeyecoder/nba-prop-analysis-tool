@@ -206,6 +206,8 @@ def load_league_logs(seasons: list[str], refresh_key: str) -> pd.DataFrame:
 # Sidebar
 # -------------------------
 with st.sidebar:
+    from datetime import timedelta
+
     # -------------------------
     # Data refresh (SAFE)
     # -------------------------
@@ -219,13 +221,19 @@ with st.sidebar:
         or est_now() - st.session_state.last_refresh > timedelta(minutes=15)
     )
 
-    if st.button("Refresh data now", disabled=not can_refresh):
+    if st.button(
+        "Refresh data now",
+        disabled=not can_refresh,
+        key="refresh_data_now_sidebar"
+    ):
         st.session_state.last_refresh = est_now()
         st.cache_data.clear()
         st.rerun()
 
     if not can_refresh:
-        remaining = 15 - int((est_now() - st.session_state.last_refresh).total_seconds() // 60)
+        remaining = 15 - int(
+            (est_now() - st.session_state.last_refresh).total_seconds() // 60
+        )
         st.caption(f"Refresh available again in ~{remaining} min.")
 
     # -------------------------
