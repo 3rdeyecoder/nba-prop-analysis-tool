@@ -19,8 +19,20 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from datetime import datetime, timedelta
+import pytz
+
 
 from nba_api.stats.endpoints import leaguegamelog
+
+# -------------------------
+# EST helper functions (STEP 2 GOES HERE)
+# -------------------------
+def est_now():
+    return datetime.now(pytz.timezone("US/Eastern"))
+
+def est_today_key():
+    return est_now().strftime("%Y-%m-%d")
 
 # -------------------------
 # Page config
@@ -156,7 +168,7 @@ def player_headshot_url(player_id: int) -> str:
 # Load real data (cached)
 # -------------------------
 @st.cache_data(show_spinner=False)
-def load_league_logs(seasons: list[str]) -> pd.DataFrame:
+def load_league_logs(seasons: list[str], refresh_key: str) -> pd.DataFrame:
     all_logs = []
     for s in seasons:
         logs = leaguegamelog.LeagueGameLog(
@@ -194,10 +206,44 @@ def load_league_logs(seasons: list[str]) -> pd.DataFrame:
 # Sidebar
 # -------------------------
 with st.sidebar:
+    # -------------------------
+    # Data refresh (SAFE)
+    # -------------------------
+    st.markdown("### 🔄 Data Refresh")
+
+    if "last_refresh" not in st.session_state:
+        st.session_state.last_refresh = None
+
+    can_refresh = (
+        st.session_state.last_refresh is None
+        or est_now() - st.session_state.last_refresh > timedelta(minutes=15)
+    )
+
+    if st.button("Refresh data now", disabled=not can_refresh):
+        st.session_state.last_refresh = est_now()
+        st.cache_data.clear()
+        st.rerun()
+
+    if not can_refresh:
+        remaining = 15 - int((est_now() - st.session_state.last_refresh).total_seconds() // 60)
+        st.caption(f"Refresh available again in ~{remaining} min.")
+
+    # -------------------------
+    # Settings
+    # -------------------------
     st.markdown("### ⚙️ Settings")
-    min_games = st.number_input("Minimum games required", min_value=1, max_value=82, value=5, step=1)
+    min_games = st.number_input(
+        "Minimum games required",
+        min_value=1,
+        max_value=82,
+        value=5,
+        step=1
+    )
     show_raw_table = st.toggle("Show raw table", value=False)
 
+    # -------------------------
+    # Season selector
+    # -------------------------
     st.markdown("### 🗓️ Season")
     seasons = st.multiselect(
         "Include seasons",
@@ -206,11 +252,17 @@ with st.sidebar:
         help="Defaults to 2025–26 for now. Older seasons stay available for future ML."
     )
 
+
 # -------------------------
 # Load data
 # -------------------------
 with st.spinner("Loading NBA game logs..."):
-    df_logs = load_league_logs(seasons)
+    refresh_key = est_today_key()
+    df_logs = load_league_logs(seasons, refresh_key)
+    # Store last updated time (EST) when data actually loads
+if "last_data_update" not in st.session_state:
+    st.session_state.last_data_update = est_now()
+
 
 # -------------------------
 # Hero header
@@ -452,3 +504,12 @@ if show_raw_table:
         st.subheader("Raw Data (Debug)")
         st.caption("Use this to confirm columns and troubleshoot.")
         st.dataframe(df_logs.head(200), use_container_width=True, hide_index=True)
+
+st.markdown("---")
+
+if "last_data_update" in st.session_state:
+    st.caption(
+        f"🕒 Last updated: "
+        f"{st.session_state.last_data_update.strftime('%Y-%m-%d %I:%M %p')} ET"
+    )
+
