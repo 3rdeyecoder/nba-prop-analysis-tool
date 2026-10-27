@@ -99,7 +99,7 @@ ALL_SEASONS = [
     "2025-26",
     "2026-27",
 ]
-DEFAULT_SEASON = "2025-26"
+DEFAULT_SEASON = "2026-27"
 
 STAT_MAP = {
     "PTS": "PTS",
