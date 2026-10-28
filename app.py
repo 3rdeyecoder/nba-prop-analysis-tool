@@ -41,7 +41,7 @@ st.set_page_config(
     page_title="NBA Props Lab",
     page_icon="🏀",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",  # open on desktop, closed on phones
 )
 
 # -------------------------
@@ -80,7 +80,6 @@ button[kind="primary"] { border-radius: 14px !important; }
 .stTabs [data-baseweb="tab-list"] { gap: 8px; }
 .stTabs [data-baseweb="tab"] { padding: 10px 14px; border-radius: 14px; }
 
-header[data-testid="stHeader"] { height: 0px !important; }
 
 .player-name { font-size: 1.85rem !important; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2 !important; }
 .player-sub { font-size: 0.98rem !important; opacity: 0.75; margin-top: 2px; }
@@ -100,6 +99,18 @@ header[data-testid="stHeader"] { height: 0px !important; }
 .hit-value { font-size: 1.55rem !important; font-weight: 700; line-height: 1.25 !important; }
 .hit-pct   { font-size: 0.9rem !important; opacity: 0.85; }
 .streak    { font-size: 1.0rem !important; margin-top: 2px; }
+
+.mobile-hint { display: none; }
+@media (max-width: 640px) {
+  .mobile-hint {
+    display: block;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: rgba(128,128,128,0.10);
+    font-size: 0.95rem !important;
+    margin-bottom: 10px;
+  }
+}
 </style>
     """,
     unsafe_allow_html=True,
@@ -184,6 +195,13 @@ def current_streak(values: pd.Series, line: float):
             break
         k += 1
     return k, ("Over" if last else "Under")
+
+def show_chart(fig):
+    """Render a Plotly chart that doesn't hijack touch scrolling on phones."""
+    fig.update_layout(dragmode=False)
+    fig.update_xaxes(fixedrange=True)
+    fig.update_yaxes(fixedrange=True)
+    st.plotly_chart(fig, width="stretch", config={"displayModeBar": False, "scrollZoom": False})
 
 def trend_sentence(player_name: str, stat_key: str, s: pd.Series) -> str:
     if len(s) < 6:
@@ -320,6 +338,10 @@ def load_league_logs(seasons: list[str], refresh_key: str) -> pd.DataFrame:
 # Sidebar
 # -------------------------
 with st.sidebar:
+    st.markdown(
+        '<div class="mobile-hint">Done with settings? Tap <b>«</b> at the top of this menu to close it.</div>',
+        unsafe_allow_html=True,
+    )
     from datetime import timedelta
 
     # -------------------------
@@ -392,6 +414,10 @@ if "last_data_update" not in st.session_state:
 st.title("🏀 NBA Props Lab")
 st.write("Research player props with trends, distributions, and context. Built for decision-making, not picks.")
 st.caption("Pick a player and stat, enter the sportsbook line, and see how often they've cleared it.")
+st.markdown(
+    '<div class="mobile-hint">Seasons and settings are in the menu. Tap <b>»</b> at the top left to open it.</div>',
+    unsafe_allow_html=True,
+)
 
 st.markdown(
     """
@@ -543,7 +569,7 @@ with tab_overview:
         chart_df["VENUE"] = np.where(chart_df["IS_HOME"], "Home", "Away")
         chart_df["ROLL5"] = chart_df["SELECTED_STAT"].rolling(5, min_periods=1).mean()
         colors = np.where(chart_df["OU"].to_numpy() == "Over", OVER_COLOR, UNDER_COLOR)
-        show_text = len(chart_df) <= 30
+        show_text = len(chart_df) <= 15
 
         overs = int((chart_df["OU"] == "Over").sum())
         st.caption(
@@ -593,19 +619,29 @@ with tab_overview:
             margin=dict(l=10, r=10, t=30, b=10),
             showlegend=False,
             bargap=0.25,
-            xaxis=dict(type="category", tickangle=0),
+            xaxis=dict(type="category", automargin=True),
             yaxis=dict(title=stat, rangemode="tozero"),
         )
-        st.plotly_chart(fig, width="stretch")
+        show_chart(fig)
 
     with st.container(border=True):
         st.subheader("Distribution")
         st.caption("Shows volatility and where outcomes cluster. Useful for understanding risk.")
-        hist = go.Figure()
-        hist.add_trace(go.Histogram(x=player_df["SELECTED_STAT"], nbinsx=12))
-        hist.add_vline(x=line, line_dash="dash", annotation_text=f"Line: {line:.1f}", annotation_position="top")
-        hist.update_layout(margin=dict(l=10, r=10, t=40, b=10), xaxis_title=stat, yaxis_title="Games")
-        st.plotly_chart(hist, width="stretch")
+        if len(player_df) < 8:
+            st.info(f"Only {len(player_df)} games in this view. This chart gets useful around 8 or more, so try a longer timeframe.")
+        else:
+            counts = player_df["SELECTED_STAT"].round(0).astype(int).value_counts().sort_index()
+            bar_colors = [OVER_COLOR if v >= line else UNDER_COLOR for v in counts.index]
+            hist = go.Figure(go.Bar(
+                x=counts.index, y=counts.values, marker_color=bar_colors,
+                hovertemplate=f"{stat} %{{x}}: %{{y}} game(s)<extra></extra>",
+            ))
+            hist.add_vline(x=line, line_dash="dash", line_color=LINE_COLOR, line_width=2,
+                           annotation_text=f"Line {line:.1f}", annotation_position="top")
+            hist.update_layout(margin=dict(l=10, r=10, t=40, b=10), xaxis_title=stat,
+                               yaxis_title="Games", bargap=0.15, showlegend=False)
+            hist.update_yaxes(dtick=1, rangemode="tozero")
+            show_chart(hist)
 
     with st.container(border=True):
         st.subheader("Recent Game Log")
@@ -630,7 +666,7 @@ with tab_trends:
         line_fig.add_trace(go.Scatter(x=player_df["GAME_DATE"], y=player_df["SELECTED_STAT"], mode="lines+markers", name=stat))
         line_fig.add_hline(y=line, line_dash="dash", annotation_text=f"Line: {line:.1f}", annotation_position="top left")
         line_fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), xaxis_title="Date", yaxis_title=stat)
-        st.plotly_chart(line_fig, width="stretch")
+        show_chart(line_fig)
 
     with st.container(border=True):
         st.subheader("Rolling Average (5-game)")
@@ -643,7 +679,7 @@ with tab_trends:
         roll_fig.add_trace(go.Scatter(x=roll["GAME_DATE"], y=roll["ROLL5"], mode="lines", name="Rolling Avg (5)"))
         roll_fig.add_hline(y=line, line_dash="dash", annotation_text=f"Line: {line:.1f}", annotation_position="top left")
         roll_fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), xaxis_title="Date", yaxis_title=stat)
-        st.plotly_chart(roll_fig, width="stretch")
+        show_chart(roll_fig)
 
 # ---------- Matchup ----------
 with tab_matchup:
