@@ -81,6 +81,25 @@ button[kind="primary"] { border-radius: 14px !important; }
 .stTabs [data-baseweb="tab"] { padding: 10px 14px; border-radius: 14px; }
 
 header[data-testid="stHeader"] { height: 0px !important; }
+
+.player-name { font-size: 1.85rem !important; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2 !important; }
+.player-sub { font-size: 0.98rem !important; opacity: 0.75; margin-top: 2px; }
+
+.hit-grid { display: flex; flex-wrap: wrap; gap: 10px; margin: 6px 0 8px; }
+.hit-tile {
+  flex: 1 1 105px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(128,128,128,0.25);
+  border-left: 4px solid rgba(128,128,128,0.45);
+  background: rgba(128,128,128,0.06);
+}
+.hit-tile.over  { border-left-color: #2fbf71; background: rgba(47,191,113,0.10); }
+.hit-tile.under { border-left-color: #e5484d; background: rgba(229,72,77,0.10); }
+.hit-label { font-size: 0.85rem !important; opacity: 0.8; }
+.hit-value { font-size: 1.55rem !important; font-weight: 700; line-height: 1.25 !important; }
+.hit-pct   { font-size: 0.9rem !important; opacity: 0.85; }
+.streak    { font-size: 1.0rem !important; margin-top: 2px; }
 </style>
     """,
     unsafe_allow_html=True,
@@ -132,6 +151,40 @@ def apply_window(df: pd.DataFrame, window_label: str) -> pd.DataFrame:
 def half_point_round(x: float) -> float:
     return round(x * 2) / 2
 
+def default_book_line(values: pd.Series) -> float:
+    """Sportsbook-style default: last-10 average, snapped to the nearest .5 below it (no pushes)."""
+    recent = values.tail(10)
+    if recent.empty:
+        return 0.5
+    return float(np.floor(recent.mean())) + 0.5
+
+OVER_COLOR = "#2fbf71"
+AVG_COLOR = "#f59e0b"   # rolling average (amber, visible in light + dark)
+LINE_COLOR = "#8b8f98"  # prop line (neutral grey, visible in light + dark)
+UNDER_COLOR = "#e5484d"
+
+def hit_tile_html(label: str, values: pd.Series, line: float) -> str:
+    n = len(values)
+    if n == 0:
+        return (f'<div class="hit-tile"><div class="hit-label">{label}</div>'
+                f'<div class="hit-value">–</div><div class="hit-pct">no games</div></div>')
+    hits = int((values >= line).sum())
+    rate = hits / n
+    tone = "over" if rate >= 0.6 else "under" if rate <= 0.4 else ""
+    return (f'<div class="hit-tile {tone}"><div class="hit-label">{label}</div>'
+            f'<div class="hit-value">{hits}/{n}</div><div class="hit-pct">{rate*100:.0f}%</div></div>')
+
+def current_streak(values: pd.Series, line: float):
+    sides = (values >= line).tolist()
+    if not sides:
+        return 0, None
+    last, k = sides[-1], 0
+    for side in reversed(sides):
+        if side != last:
+            break
+        k += 1
+    return k, ("Over" if last else "Under")
+
 def trend_sentence(player_name: str, stat_key: str, s: pd.Series) -> str:
     if len(s) < 6:
         return f"{player_name} does not have enough games in this timeframe to confidently describe a trend for {stat_key}."
@@ -168,18 +221,78 @@ def player_headshot_url(player_id: int) -> str:
 # -------------------------
 # Load real data (cached)
 # -------------------------
-@st.cache_data(show_spinner=False)
+import os
+import time
+from pathlib import Path
+
+DATA_DIR = Path(__file__).parent / "data"
+
+NBA_HEADERS = {
+    "Host": "stats.nba.com",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Origin": "https://www.nba.com",
+    "Referer": "https://www.nba.com/",
+    "Connection": "keep-alive",
+}
+
+
+def fetch_season_live(season: str, timeout: int = 30, retries: int = 2) -> pd.DataFrame:
+    """Pull one season from stats.nba.com. Set NBA_PROXY (env var or st.secrets) to route through a proxy."""
+    proxy = os.environ.get("NBA_PROXY")
+    if not proxy:
+        try:
+            proxy = st.secrets.get("NBA_PROXY")
+        except Exception:  # no secrets.toml
+            proxy = None
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            logs = leaguegamelog.LeagueGameLog(
+                player_or_team_abbreviation="P",
+                season=season,
+                season_type_all_star="Regular Season",
+                headers=NBA_HEADERS,
+                timeout=timeout,
+                proxy=proxy,
+            )
+            return logs.get_data_frames()[0]
+        except Exception as e:  # ReadTimeout, ConnectionError, JSON errors...
+            last_err = e
+            time.sleep(2 * (attempt + 1))
+    raise last_err
+
+
+def load_season_snapshot(season: str):
+    path = DATA_DIR / f"league_logs_{season}.csv.gz"
+    return pd.read_csv(path) if path.exists() else None
+
+
+@st.cache_data(show_spinner=False, ttl=60 * 60)
 def load_league_logs(seasons: list[str], refresh_key: str) -> pd.DataFrame:
     all_logs = []
+    failed = []
     for s in seasons:
-        logs = leaguegamelog.LeagueGameLog(
-            player_or_team_abbreviation="P",
-            season=s,
-            season_type_all_star="Regular Season",
-        )
-        df_season = logs.get_data_frames()[0]
+        df_season = load_season_snapshot(s)          # 1) committed snapshot (fast, always works)
+        if df_season is None:
+            try:
+                df_season = fetch_season_live(s)     # 2) live API as a fallback
+            except Exception:
+                failed.append(s)
+                continue
         df_season["SEASON"] = s
         all_logs.append(df_season)
+
+    if failed:
+        st.warning(
+            f"Couldn't reach stats.nba.com for: {', '.join(failed)}. "
+            "Run `python fetch_data.py` locally and commit the data/ folder."
+        )
+    if not all_logs:
+        st.error("No data available for the selected season(s).")
+        st.stop()
 
     df_logs = pd.concat(all_logs, ignore_index=True)
     df_logs["GAME_DATE"] = pd.to_datetime(df_logs["GAME_DATE"], errors="coerce")
@@ -278,7 +391,7 @@ if "last_data_update" not in st.session_state:
 # -------------------------
 st.title("🏀 NBA Props Lab")
 st.write("Research player props with trends, distributions, and context. Built for decision-making, not picks.")
-st.caption("Default view shows the 2025–26 season for now. Historical seasons will be used later for modeling.")
+st.caption("Pick a player and stat, enter the sportsbook line, and see how often they've cleared it.")
 
 st.markdown(
     """
@@ -302,14 +415,98 @@ with st.container(border=True):
     with r1c3:
         window = st.selectbox("🗓️ Timeframe", list(WINDOW_MAP.keys()))
 
-    r2c1, r2c2 = st.columns([1.0, 1.2])
+    # Every game for this player in the selected seasons (used by the header + hit-rate strip)
+    stat_col = STAT_MAP[stat]
+    player_all = df_logs[df_logs["PLAYER_NAME"] == player].sort_values("GAME_DATE").copy()
+    player_all["SELECTED_STAT"] = pd.to_numeric(player_all[stat_col], errors="coerce")
+    player_all = player_all.dropna(subset=["SELECTED_STAT"])
+    if player_all.empty:
+        st.warning(f"No {stat} data for {player} in the selected seasons.")
+        st.stop()
+
+    r2c1, r2c2, r2c3 = st.columns([1.0, 1.2, 1.0])
     with r2c1:
         home_away = st.selectbox("🏠 Home/Away", ["All", "Home", "Away"])
     with r2c2:
         opponent = st.selectbox("🛡️ Opponent", ["All"] + sorted(df_logs["OPPONENT"].unique().tolist()))
+    with r2c3:
+        line = st.number_input(
+            "🎯 Line",
+            min_value=0.0,
+            max_value=200.0,
+            value=default_book_line(player_all["SELECTED_STAT"]),
+            step=0.5,
+            key=f"line_{player}_{stat}",
+            help="Defaults to the last-10 average. Change it to the sportsbook line you're looking at.",
+        )
 
+
+# -------------------------
+# Player header card
+# -------------------------
+player_id = int(player_all["PLAYER_ID"].iloc[-1])
+team = player_all["TEAM_ABBREVIATION"].iloc[-1] if "TEAM_ABBREVIATION" in player_all else ""
+vals_all = player_all["SELECTED_STAT"]
+season_avg = vals_all.mean()
+l5_avg = vals_all.tail(5).mean()
+l10_avg = vals_all.tail(10).mean()
+min_season = player_all["MIN"].mean()
+min_l5 = player_all["MIN"].tail(5).mean()
+season_text = seasons[0] if len(seasons) == 1 else f"{len(seasons)} seasons"
+
+with st.container(border=True):
+    left, right = st.columns([0.22, 1.78], vertical_alignment="center")
+    with left:
+        st.image(player_headshot_url(player_id), width=130)
+    with right:
+        st.markdown(
+            f'''<div class="player-name">{player}</div>
+<div class="player-sub">{team}, {len(player_all)} games in {season_text}. Showing {stat}.</div>''',
+            unsafe_allow_html=True,
+        )
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric(f"{stat} avg", f"{season_avg:.1f}")
+    m2.metric("Last 5", f"{l5_avg:.1f}", delta=f"{l5_avg - season_avg:+.1f} vs avg")
+    m3.metric("Last 10", f"{l10_avg:.1f}", delta=f"{l10_avg - season_avg:+.1f} vs avg")
+    m4.metric("Minutes (L5)", f"{min_l5:.1f}", delta=f"{min_l5 - min_season:+.1f} vs avg")
+
+# -------------------------
+# Hit-rate strip
+# -------------------------
+with st.container(border=True):
+    st.subheader(f"Hit rate: {stat} over {line:.1f}")
+
+    tiles = [
+        ("Last 5", vals_all.tail(5)),
+        ("Last 10", vals_all.tail(10)),
+        ("Last 20", vals_all.tail(20)),
+        ("Season" if len(seasons) == 1 else "All games", vals_all),
+        ("Home", player_all.loc[player_all["IS_HOME"], "SELECTED_STAT"]),
+        ("Away", player_all.loc[~player_all["IS_HOME"], "SELECTED_STAT"]),
+    ]
+    if opponent != "All":
+        tiles.append((f"vs {opponent}", player_all.loc[player_all["OPPONENT"] == opponent, "SELECTED_STAT"]))
+
+    st.markdown(
+        '<div class="hit-grid">' + "".join(hit_tile_html(lbl, v, line) for lbl, v in tiles) + "</div>",
+        unsafe_allow_html=True,
+    )
+
+    streak_len, streak_side = current_streak(vals_all, line)
+    if streak_len >= 2:
+        color = OVER_COLOR if streak_side == "Over" else UNDER_COLOR
+        st.markdown(
+            f'<div class="streak">Went <b style="color:{color}">{streak_side}</b> in each of the last <b>{streak_len}</b> games.</div>',
+            unsafe_allow_html=True,
+        )
+    st.caption("Counts every game in the selected seasons. The timeframe, home/away and opponent filters only change the charts below.")
+
+# -------------------------
+# Filtered view for the charts below
+# -------------------------
 # Apply filters
-player_df = df_logs[df_logs["PLAYER_NAME"] == player].sort_values("GAME_DATE").copy()
+player_df = player_all.copy()
 
 if home_away == "Home":
     player_df = player_df[player_df["IS_HOME"]]
@@ -325,79 +522,7 @@ if len(player_df) < min_games:
     st.warning(f"Not enough games after filters. Need at least {min_games}, found {len(player_df)}.")
     st.stop()
 
-# Selected stat values
-stat_col = STAT_MAP[stat]
-player_df["SELECTED_STAT"] = pd.to_numeric(player_df[stat_col], errors="coerce")
-player_df = player_df.dropna(subset=["SELECTED_STAT"])
-
-if len(player_df) < min_games:
-    st.warning(f"Not enough valid stat rows after cleaning. Need at least {min_games}, found {len(player_df)}.")
-    st.stop()
-
-# Line input after filters, default to half-point rounded mean
-suggested_line = half_point_round(float(player_df["SELECTED_STAT"].mean()))
-with st.container(border=True):
-    c1, c2 = st.columns([1.0, 2.0])
-    with c1:
-        line = st.number_input(
-            "🎯 Line (Over/Under colors)",
-            min_value=0.0,
-            max_value=200.0,
-            value=float(suggested_line),
-            step=0.5,
-        )
-    with c2:
-        st.caption("Auto-filled from the average in this view. Change it to match the sportsbook line you are considering.")
-
 player_df["OU"] = np.where(player_df["SELECTED_STAT"] >= line, "Over", "Under")
-
-# -------------------------
-# Player picture + header card
-# -------------------------
-player_id = int(player_df["PLAYER_ID"].iloc[0])
-headshot = player_headshot_url(player_id)
-
-left, right = st.columns([0.35, 1.65], vertical_alignment="center")
-with left:
-    st.image(headshot, width=120)
-
-with right:
-    venue_text = "All venues" if home_away == "All" else f"{home_away} only"
-    opp_text = "All opponents" if opponent == "All" else f"vs {opponent}"
-    st.markdown(
-        f"""
-<div class="card">
-  <div class="card-title">👤 {player} — {stat} ({window})</div>
-  <div class="muted">{venue_text} · {opp_text} · Seasons: {", ".join(seasons)}</div>
-</div>
-""",
-        unsafe_allow_html=True,
-    )
-
-# -------------------------
-# Summary metrics
-# -------------------------
-games = len(player_df)
-avg = player_df["SELECTED_STAT"].mean()
-med = player_df["SELECTED_STAT"].median()
-last = player_df["SELECTED_STAT"].iloc[-1]
-hit_rate = (player_df["SELECTED_STAT"] >= line).mean()
-
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Games", f"{games}")
-m2.metric("Average", f"{avg:.1f}")
-m3.metric("Median", f"{med:.1f}")
-m4.metric("Last Game", f"{last:.0f}")
-
-st.markdown(
-    f"""
-<div class="card">
-  <div class="card-title">✅ Hit Rate vs {line:.1f}</div>
-  <div class="muted">{player} hit <b>{stat}</b> at or above <b>{line:.1f}</b> in <b>{hit_rate*100:.1f}%</b> of games in this view.</div>
-</div>
-""",
-    unsafe_allow_html=True,
-)
 
 # -------------------------
 # Tabs
@@ -408,23 +533,35 @@ tab_overview, tab_trends, tab_matchup = st.tabs(["📌 Overview", "📈 Trends",
 with tab_overview:
     with st.container(border=True):
         st.subheader("Over / Under by Game")
-        st.caption("Green = went over the line. Red = went under. The dashed line is your prop line.")
 
         chart_df = player_df.copy()
-        chart_df["DATE_LABEL"] = chart_df["GAME_DATE"].dt.strftime("%b %d")
+        date_fmt = "%b %d" if len(seasons) == 1 else "%b %d '%y"
+        chart_df["X_LABEL"] = (
+            chart_df["GAME_DATE"].dt.strftime(date_fmt) + "<br>"
+            + np.where(chart_df["IS_HOME"], "vs ", "@ ") + chart_df["OPPONENT"]
+        )
         chart_df["VENUE"] = np.where(chart_df["IS_HOME"], "Home", "Away")
+        chart_df["ROLL5"] = chart_df["SELECTED_STAT"].rolling(5, min_periods=1).mean()
+        colors = np.where(chart_df["OU"].to_numpy() == "Over", OVER_COLOR, UNDER_COLOR)
+        show_text = len(chart_df) <= 30
 
-        colors = np.where(chart_df["OU"].to_numpy() == "Over", "green", "red")
+        overs = int((chart_df["OU"] == "Over").sum())
+        st.caption(
+            f"Over in {overs} of {len(chart_df)} games shown. "
+            "Green cleared the line, red fell short; the orange line is the 5-game rolling average, the dashed grey line is your prop line."
+        )
 
         fig = go.Figure()
         fig.add_trace(
             go.Bar(
-                x=chart_df["DATE_LABEL"],
+                x=chart_df["X_LABEL"],
                 y=chart_df["SELECTED_STAT"],
                 marker_color=colors,
+                text=chart_df["SELECTED_STAT"].round(0).astype(int) if show_text else None,
+                textposition="outside",
+                cliponaxis=False,
                 customdata=np.stack([chart_df["MATCHUP"], chart_df["MIN"], chart_df["VENUE"]], axis=1),
                 hovertemplate=(
-                    "<b>%{x}</b><br>"
                     f"{stat}: %{{y}}<br>"
                     "Matchup: %{customdata[0]}<br>"
                     "MIN: %{customdata[1]}<br>"
@@ -433,9 +570,33 @@ with tab_overview:
                 name=stat,
             )
         )
-        fig.add_hline(y=line, line_dash="dash", annotation_text=f"Line: {line:.1f}", annotation_position="top left")
-        fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        fig.add_trace(
+            go.Scatter(
+                x=chart_df["X_LABEL"],
+                y=chart_df["ROLL5"],
+                mode="lines+markers",
+                line=dict(color=AVG_COLOR, width=3),
+                marker=dict(size=7, color=AVG_COLOR),
+                hovertemplate="5-game avg: %{y:.1f}<extra></extra>",
+                name="5-game avg",
+            )
+        )
+        fig.add_hline(
+            y=line,
+            line_dash="dash",
+            line_color=LINE_COLOR,
+            line_width=2,
+            annotation_text=f"Line {line:.1f}",
+            annotation_position="top right",
+        )
+        fig.update_layout(
+            margin=dict(l=10, r=10, t=30, b=10),
+            showlegend=False,
+            bargap=0.25,
+            xaxis=dict(type="category", tickangle=0),
+            yaxis=dict(title=stat, rangemode="tozero"),
+        )
+        st.plotly_chart(fig, width="stretch")
 
     with st.container(border=True):
         st.subheader("Distribution")
@@ -444,7 +605,7 @@ with tab_overview:
         hist.add_trace(go.Histogram(x=player_df["SELECTED_STAT"], nbinsx=12))
         hist.add_vline(x=line, line_dash="dash", annotation_text=f"Line: {line:.1f}", annotation_position="top")
         hist.update_layout(margin=dict(l=10, r=10, t=40, b=10), xaxis_title=stat, yaxis_title="Games")
-        st.plotly_chart(hist, use_container_width=True)
+        st.plotly_chart(hist, width="stretch")
 
     with st.container(border=True):
         st.subheader("Recent Game Log")
@@ -453,7 +614,7 @@ with tab_overview:
         view["HOME_AWAY"] = np.where(view["IS_HOME"], "Home", "Away")
         view = view.drop(columns=["IS_HOME"]).rename(columns={"GAME_DATE": "DATE", "SELECTED_STAT": stat})
         view = view.sort_values("DATE", ascending=False)
-        st.dataframe(view, use_container_width=True, hide_index=True)
+        st.dataframe(view, width="stretch", hide_index=True)
 
 # ---------- Trends ----------
 with tab_trends:
@@ -469,7 +630,7 @@ with tab_trends:
         line_fig.add_trace(go.Scatter(x=player_df["GAME_DATE"], y=player_df["SELECTED_STAT"], mode="lines+markers", name=stat))
         line_fig.add_hline(y=line, line_dash="dash", annotation_text=f"Line: {line:.1f}", annotation_position="top left")
         line_fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), xaxis_title="Date", yaxis_title=stat)
-        st.plotly_chart(line_fig, use_container_width=True)
+        st.plotly_chart(line_fig, width="stretch")
 
     with st.container(border=True):
         st.subheader("Rolling Average (5-game)")
@@ -482,7 +643,7 @@ with tab_trends:
         roll_fig.add_trace(go.Scatter(x=roll["GAME_DATE"], y=roll["ROLL5"], mode="lines", name="Rolling Avg (5)"))
         roll_fig.add_hline(y=line, line_dash="dash", annotation_text=f"Line: {line:.1f}", annotation_position="top left")
         roll_fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), xaxis_title="Date", yaxis_title=stat)
-        st.plotly_chart(roll_fig, use_container_width=True)
+        st.plotly_chart(roll_fig, width="stretch")
 
 # ---------- Matchup ----------
 with tab_matchup:
@@ -494,7 +655,7 @@ with tab_matchup:
             .agg(games="count", avg="mean", median="median")
             .sort_values(["games", "avg"], ascending=False)
         )
-        st.dataframe(opp_summary, use_container_width=True)
+        st.dataframe(opp_summary, width="stretch")
 
     with st.container(border=True):
         st.subheader("Home vs Away Summary (in this view)")
@@ -505,14 +666,14 @@ with tab_matchup:
             .agg(games="count", avg="mean", median="median")
             .sort_values("games", ascending=False)
         )
-        st.dataframe(ha, use_container_width=True)
+        st.dataframe(ha, width="stretch")
 
 # Raw table
 if show_raw_table:
     with st.container(border=True):
         st.subheader("Raw Data (Debug)")
         st.caption("Use this to confirm columns and troubleshoot.")
-        st.dataframe(df_logs.head(200), use_container_width=True, hide_index=True)
+        st.dataframe(df_logs.head(200), width="stretch", hide_index=True)
 
 st.markdown("---")
 
