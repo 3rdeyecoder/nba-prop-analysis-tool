@@ -187,8 +187,56 @@ def test_nba_stored_snapshot_normalizes():
     row = df.iloc[0]
     assert row["PRA"] == row["PTS"] + row["REB"] + row["AST"]
     assert row["BLK_STL"] == row["BLK"] + row["STL"]
+    assert (df["FGM"] <= df["FGA"]).all() and (df["FG3M"] <= df["FG3A"]).all()
+    assert (df["FG3A"] <= df["FGA"]).all()
 
 
 def test_nba_rejects_changed_schema():
     with pytest.raises(ValueError):
         nba.normalize(pd.DataFrame({"PLAYER_ID": [1]}), "2025-26", "Regular Season")
+
+
+# ---------------------------------------------------------------- NFL stats by position
+
+def _pg(position, **stats):
+    row = {c: 0 for c in nfl.RAW_STATS}
+    row.update(position=position, **stats)
+    return pd.DataFrame([row])
+
+
+def _groups(picked):
+    return [g for g, _, _ in picked]
+
+
+def test_qb_gets_passing_first_and_no_receiving():
+    picked, default, _core = nfl.stats_for_player(_pg("QB", attempts=30, carries=4))
+    assert default == "passing_yards"
+    assert _groups(picked)[0] == "Passing"
+    assert "Receiving" not in _groups(picked)
+    assert [c for g, _, c in picked if g == "Combos"] == ["pass_rush_yards"]
+
+
+def test_wr_gets_receiving_first_and_no_passing():
+    picked, default, _core = nfl.stats_for_player(_pg("WR", targets=8))
+    assert default == "receiving_yards"
+    assert _groups(picked)[0] == "Receiving"
+    assert "Passing" not in _groups(picked)
+    assert "rush_rec_yards" in [c for _, _, c in picked]
+
+
+def test_rb_gets_rushing_then_receiving():
+    picked, default, _core = nfl.stats_for_player(_pg("RB", carries=15, targets=3))
+    assert default == "rushing_yards"
+    assert _groups(picked)[:2] == ["Rushing", "Rushing"]
+    assert "Receiving" in _groups(picked) and "Passing" not in _groups(picked)
+
+
+def test_trick_play_adds_the_group_the_player_actually_recorded():
+    picked, _d, core = nfl.stats_for_player(_pg("WR", targets=5, attempts=1))   # WR threw a pass
+    assert "Passing" in _groups(picked)
+    assert "passing_yards" not in core          # listed, but never auto-kept on a player switch
+
+
+def test_show_all_returns_every_stat():
+    picked, default, _core = nfl.stats_for_player(_pg("TE"), show_all=True)
+    assert picked == nfl.STATS and default == "receiving_yards"

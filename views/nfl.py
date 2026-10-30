@@ -5,12 +5,19 @@ import streamlit as st
 from core.ui import SportView, StatOption, data_status, render_analysis
 from sports import nfl
 
+
+def stats_for(player_games):
+    picked, default, core = nfl.stats_for_player(player_games, st.session_state.get("nfl_all_stats", False))
+    return [StatOption(g, label, col) for g, label, col in picked], default, core
+
+
 VIEW = SportView(
     prefix="nfl",
     sport="nfl",
     stats=[StatOption(g, label, col) for g, label, col in nfl.STATS],
     season_types=["Regular Season", "Postseason"],
     season_label=lambda s: f"{s} season",
+    stats_for=stats_for,
     extra_cols=[("week", "Week"), ("round", "Round"), ("position", "Pos")],
     participation_note=(
         "A game counts when the player has a row in nflverse's weekly player stats, which means they "
@@ -46,6 +53,10 @@ with st.sidebar:
     st.session_state.setdefault("nfl_positions", nfl.POSITIONS)
     st.multiselect("Positions", ["QB", "RB", "FB", "WR", "TE"], key="nfl_positions",
                    help="Limits the player list. Stats come from each player's listed nflverse position.")
+    st.session_state.setdefault("nfl_all_stats", False)
+    st.toggle("Show every stat for every player", key="nfl_all_stats",
+              help="Off: the stat list matches the player's position (e.g. receiving stats for WRs), "
+                   "plus anything else they actually recorded. On: all NFL stats.")
 
 seasons = [str(s) for s in nfl.available_seasons()]
 if not seasons:

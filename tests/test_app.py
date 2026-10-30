@@ -34,7 +34,8 @@ def test_nba_is_default_and_renders():
 def test_nba_stats_and_combos_still_work():
     at = _app()
     for stat in ["Pts + Reb + Ast (PRA)", "Pts + Reb (PR)", "Pts + Ast (PA)", "Reb + Ast (RA)",
-                 "Steals", "Blocks", "3-pointers made"]:
+                 "Steals", "Blocks", "3-pointers made", "3-pointers attempted",
+                 "Field goals made", "Field goals attempted"]:
         at.selectbox(key="nba_stat").set_value(stat).run()
         assert not at.exception, (stat, at.exception)
 
@@ -50,7 +51,7 @@ def test_sport_state_is_independent_and_survives_switching():
     assert "nfl_stat" in keys and "nba_stat" not in keys
     if nfl.available_seasons():
         assert at.selectbox(key="nfl_window").value == "Last 10"      # untouched by the NBA change
-        at.selectbox(key="nfl_stat").set_value("Receiving · Receptions").run()
+        at.selectbox(key="nfl_stat").set_value("Passing · Passing TDs").run()
         assert not at.exception
 
     at.switch_page("views/nba.py").run()
@@ -73,7 +74,7 @@ def test_nfl_page():
     assert not at.exception
     labels = [m.label for m in at.metric]
     assert "Historical over rate" in labels
-    at.selectbox(key="nfl_stat").set_value("Combos · Rush + Rec yards").run()
+    at.selectbox(key="nfl_stat").set_value("Combos · Pass + Rush yards").run()
     assert not at.exception
 
 
@@ -89,3 +90,31 @@ def test_about_page():
     at = _app()
     at.switch_page("views/about.py").run()
     assert not at.exception
+
+
+def test_nfl_stat_list_follows_player_position():
+    if not nfl.available_seasons():
+        return
+    at = _app()
+    at.switch_page("views/nfl.py").run()
+    from sports import nfl as nflmod
+    df = nflmod.load_season(int(at.multiselect(key="nfl_seasons").value[-1]))
+    wr = df[df.position == "WR"].groupby("player_id")["receiving_yards"].sum().idxmax()
+    qb = df[df.position == "QB"].groupby("player_id")["passing_yards"].sum().idxmax()
+
+    at.selectbox(key="nfl_player").set_value(wr).run()
+    stat = at.selectbox(key="nfl_stat")
+    assert stat.value == "Receiving · Receiving yards"
+    assert stat.options[0].startswith("Receiving")
+
+    at.selectbox(key="nfl_stat").set_value("Receiving · Receptions").run()
+    at.selectbox(key="nfl_player").set_value(qb).run()
+    stat = at.selectbox(key="nfl_stat")
+    assert stat.value == "Passing · Passing yards"            # receptions doesn't fit a QB
+    assert stat.options[0].startswith("Passing")
+
+    at.selectbox(key="nfl_player").set_value(wr).run()       # back to the WR (who threw 1 pass)
+    assert at.selectbox(key="nfl_stat").value == "Receiving · Receiving yards"
+
+    at.toggle(key="nfl_all_stats").set_value(True).run()
+    assert len(at.selectbox(key="nfl_stat").options) == len(nflmod.STATS)

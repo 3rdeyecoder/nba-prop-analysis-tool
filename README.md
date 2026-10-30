@@ -21,13 +21,16 @@ probability for the next game. There are no odds, sportsbook integrations or bet
 - Game-by-game chart with the line, 5-game rolling average, dates and hover details
 - Game-log table and CSV download of exactly the games shown
 
-**NBA**: points, rebounds, assists, 3PM, steals, blocks, PRA, PR, PA, RA, blocks + steals;
+**NBA**: points, rebounds, assists, 3-pointers made and attempted, field goals made and
+attempted, steals, blocks, PRA, PR, PA, RA, blocks + steals;
 headshot card, quick hit-rate strip, streaks, distribution, trend summary, rolling average,
 opponent and home/away splits.
 
 **NFL**: passing (yards, TDs, attempts, completions, INTs), rushing (yards, attempts, TDs),
 receiving (yards, receptions, targets, TDs) and combos (rush + rec yards, pass + rush yards,
-rush + rec TDs). QB, RB, WR and TE by default (FB optional).
+rush + rec TDs). QB, RB, WR and TE by default (FB optional). The stat list follows the
+player's position (passing first for QBs, rushing for RBs, receiving for WRs/TEs), plus any
+other stat type they actually recorded; a sidebar toggle shows every stat instead.
 
 **MLB**: separate **Hitters** (hits, HR, total bases, runs, RBIs, walks, batter strikeouts,
 stolen bases, H+R+RBI) and **Pitchers** (strikeouts, outs recorded, hits allowed, earned runs,

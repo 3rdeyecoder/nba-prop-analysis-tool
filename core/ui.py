@@ -45,6 +45,9 @@ class SportView:
     season_label: Callable[[str], str] = lambda s: s
     extra_cols: list[tuple[str, str]] = field(default_factory=list)  # (column, header) for table + hover
     value_display: Callable[[pd.Series, str], pd.Series] | None = None  # e.g. outs -> "5.2 IP"
+    # Optional: (player's games) -> (stat options, default stat col, cols that may carry over
+    # from the previous player). Lets NFL show receiving stats for WRs, passing for QBs, etc.
+    stats_for: Callable[[pd.DataFrame], tuple[list[StatOption], str, set[str]]] | None = None
 
 
 @dataclass
@@ -115,13 +118,26 @@ def render_analysis(view: SportView, order: list[str],
         c1, c2, c3 = st.columns([1.6, 1.3, 0.9])
         player_id = c1.selectbox("👤 Player (type to search)", list(labels), key=f"{p}_player",
                                  format_func=labels.get)
-        stat_map = {s.display: s for s in view.stats}
-        _ensure(f"{p}_stat", list(stat_map), view.stats[0].display)
+        player_games = pool[pool["player_id"] == player_id].sort_values(["game_date", "game_seq"])
+        if view.stats_for:
+            options, default_col, carry = view.stats_for(player_games)
+        else:
+            options, default_col, carry = view.stats, view.stats[0].col, {s.col for s in view.stats}
+        stat_map = {s.display: s for s in options}
+        default = next((s.display for s in options if s.col == default_col), options[0].display)
+        # On a player change, keep the stat only if it suits the new player's position
+        # (WR -> WR keeps Receptions); otherwise use their main stat (WR -> QB: Passing yards).
+        last_player_key = f"{p}_last_player"
+        current = stat_map.get(st.session_state.get(f"{p}_stat"))
+        if st.session_state.get(last_player_key) not in (None, player_id) and (
+                current is None or current.col not in carry):
+            st.session_state[f"{p}_stat"] = default
+        st.session_state[last_player_key] = player_id
+        _ensure(f"{p}_stat", list(stat_map), default)
         stat = stat_map[c2.selectbox("📊 Stat", list(stat_map), key=f"{p}_stat")]
         _ensure(f"{p}_window", list(WINDOW_OPTIONS), "Last 10")
         window_label = c3.selectbox("⏱️ Recent games", list(WINDOW_OPTIONS), key=f"{p}_window")
 
-        player_games = pool[pool["player_id"] == player_id].sort_values(["game_date", "game_seq"])
         player_name = player_games["player_name"].iloc[-1]
 
         c1, c2, c3 = st.columns([1.3, 1.0, 1.0])

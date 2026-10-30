@@ -111,3 +111,45 @@ def add_derived(df: pd.DataFrame) -> pd.DataFrame:
 
 def load_season(season: int) -> pd.DataFrame:
     return add_derived(pd.read_parquet(season_path(season)))
+
+
+# ---------------------------------------------------------------- stats by position
+
+# Stat groups shown for each position, most relevant first.
+POSITION_GROUPS = {
+    "QB": ["Passing", "Rushing"],
+    "RB": ["Rushing", "Receiving"],
+    "FB": ["Rushing", "Receiving"],
+    "WR": ["Receiving", "Rushing"],
+    "TE": ["Receiving", "Rushing"],
+}
+DEFAULT_STAT = {"QB": "passing_yards", "RB": "rushing_yards", "FB": "rushing_yards",
+                "WR": "receiving_yards", "TE": "receiving_yards"}
+GROUP_ACTIVITY = {"Passing": "attempts", "Rushing": "carries", "Receiving": "targets"}
+COMBO_NEEDS = {"pass_rush_yards": "Passing", "rush_rec_yards": "Receiving", "rush_rec_tds": "Receiving"}
+
+
+def stats_for_player(player_games: pd.DataFrame, show_all: bool = False) -> tuple[list[tuple], str, set[str]]:
+    """(stat tuples that fit this player, default stat col, core stat cols for the position).
+
+    Starts from the player's position, then adds any other group the player actually
+    recorded in the selected games (e.g. a WR with carries, a TE who threw a pass).
+    """
+    position = str(player_games["position"].iloc[-1]) if len(player_games) else ""
+    default = DEFAULT_STAT.get(position, STATS[0][2])
+    core_groups = POSITION_GROUPS.get(position, [])
+    # Stats that carry over when switching to this player. Trick-play groups are listed
+    # but never auto-selected (a WR's one pass attempt shouldn't keep "Passing yards").
+    core = {c for g, _, c in STATS if g in core_groups}
+    core |= {c for c, need in COMBO_NEEDS.items() if need in core_groups}
+    if show_all or position not in POSITION_GROUPS:
+        return list(STATS), default, core or {c for _, _, c in STATS}
+    groups = list(core_groups)
+    for group, col in GROUP_ACTIVITY.items():
+        if group not in groups and player_games[col].fillna(0).gt(0).any():
+            groups.append(group)
+    order = {g: i for i, g in enumerate(groups)}
+    picked = [s for s in STATS if s[0] in order]
+    picked.sort(key=lambda s: order[s[0]])  # stable: keeps the order within each group
+    picked += [s for s in STATS if s[0] == "Combos" and COMBO_NEEDS[s[2]] in order]
+    return picked, default, core
