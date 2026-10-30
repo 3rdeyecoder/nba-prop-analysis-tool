@@ -45,7 +45,7 @@ def fetch(season: str, api_type: str, proxy: str | None) -> pd.DataFrame:
 
     return leaguegamelog.LeagueGameLog(
         player_or_team_abbreviation="P", season=season, season_type_all_star=api_type,
-        headers=HEADERS, timeout=60, proxy=proxy,
+        timeout=60, proxy=proxy,
     ).get_data_frames()[0]
 
 
