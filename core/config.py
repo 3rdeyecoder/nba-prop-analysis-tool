@@ -1,9 +1,9 @@
 """App-wide settings. Change APP_NAME / APP_SUBTITLE to rebrand."""
 from pathlib import Path
 
-APP_NAME = "NBA Props Lab"
-APP_SUBTITLE = "NBA • NFL • MLB Player Analytics"
-APP_ICON = "🏀"
+APP_NAME = "Playmaker Lab"
+APP_SUBTITLE = "🏀 NBA • 🏈 NFL • ⚾ MLB Player Analytics"
+APP_ICON = "🧪🏀🏈⚾"
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT_DIR / "data"

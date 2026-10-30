@@ -1,4 +1,4 @@
-# NBA Props Lab — NBA • NFL • MLB Player Analytics
+# Playmaker Lab — NBA • NFL • MLB Player Analytics
 
 A Streamlit app for researching player props with historical game logs. Pick a sport, a player,
 a stat and a line, and see how often the player has gone over, under or pushed in past games,
