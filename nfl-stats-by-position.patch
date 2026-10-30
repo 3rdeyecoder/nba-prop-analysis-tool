@@ -1,0 +1,252 @@
+diff --git a/README.md b/README.md
+index e26331c..fbcd3f1 100644
+--- a/README.md
++++ b/README.md
+@@ -27,7 +27,9 @@ opponent and home/away splits.
+ 
+ **NFL**: passing (yards, TDs, attempts, completions, INTs), rushing (yards, attempts, TDs),
+ receiving (yards, receptions, targets, TDs) and combos (rush + rec yards, pass + rush yards,
+-rush + rec TDs). QB, RB, WR and TE by default (FB optional).
++rush + rec TDs). QB, RB, WR and TE by default (FB optional). The stat list follows the
++player's position (passing first for QBs, rushing for RBs, receiving for WRs/TEs), plus any
++other stat type they actually recorded; a sidebar toggle shows every stat instead.
+ 
+ **MLB**: separate **Hitters** (hits, HR, total bases, runs, RBIs, walks, batter strikeouts,
+ stolen bases, H+R+RBI) and **Pitchers** (strikeouts, outs recorded, hits allowed, earned runs,
+diff --git a/core/ui.py b/core/ui.py
+index 1bc9430..ea089fd 100644
+--- a/core/ui.py
++++ b/core/ui.py
+@@ -45,6 +45,9 @@ class SportView:
+     season_label: Callable[[str], str] = lambda s: s
+     extra_cols: list[tuple[str, str]] = field(default_factory=list)  # (column, header) for table + hover
+     value_display: Callable[[pd.Series, str], pd.Series] | None = None  # e.g. outs -> "5.2 IP"
++    # Optional: (player's games) -> (stat options, default stat col, cols that may carry over
++    # from the previous player). Lets NFL show receiving stats for WRs, passing for QBs, etc.
++    stats_for: Callable[[pd.DataFrame], tuple[list[StatOption], str, set[str]]] | None = None
+ 
+ 
+ @dataclass
+@@ -115,13 +118,26 @@ def render_analysis(view: SportView, order: list[str],
+         c1, c2, c3 = st.columns([1.6, 1.3, 0.9])
+         player_id = c1.selectbox("👤 Player (type to search)", list(labels), key=f"{p}_player",
+                                  format_func=labels.get)
+-        stat_map = {s.display: s for s in view.stats}
+-        _ensure(f"{p}_stat", list(stat_map), view.stats[0].display)
++        player_games = pool[pool["player_id"] == player_id].sort_values(["game_date", "game_seq"])
++        if view.stats_for:
++            options, default_col, carry = view.stats_for(player_games)
++        else:
++            options, default_col, carry = view.stats, view.stats[0].col, {s.col for s in view.stats}
++        stat_map = {s.display: s for s in options}
++        default = next((s.display for s in options if s.col == default_col), options[0].display)
++        # On a player change, keep the stat only if it suits the new player's position
++        # (WR -> WR keeps Receptions); otherwise use their main stat (WR -> QB: Passing yards).
++        last_player_key = f"{p}_last_player"
++        current = stat_map.get(st.session_state.get(f"{p}_stat"))
++        if st.session_state.get(last_player_key) not in (None, player_id) and (
++                current is None or current.col not in carry):
++            st.session_state[f"{p}_stat"] = default
++        st.session_state[last_player_key] = player_id
++        _ensure(f"{p}_stat", list(stat_map), default)
+         stat = stat_map[c2.selectbox("📊 Stat", list(stat_map), key=f"{p}_stat")]
+         _ensure(f"{p}_window", list(WINDOW_OPTIONS), "Last 10")
+         window_label = c3.selectbox("⏱️ Recent games", list(WINDOW_OPTIONS), key=f"{p}_window")
+ 
+-        player_games = pool[pool["player_id"] == player_id].sort_values(["game_date", "game_seq"])
+         player_name = player_games["player_name"].iloc[-1]
+ 
+         c1, c2, c3 = st.columns([1.3, 1.0, 1.0])
+diff --git a/sports/nfl.py b/sports/nfl.py
+index 5492922..de199a9 100644
+--- a/sports/nfl.py
++++ b/sports/nfl.py
+@@ -111,3 +111,45 @@ def add_derived(df: pd.DataFrame) -> pd.DataFrame:
+ 
+ def load_season(season: int) -> pd.DataFrame:
+     return add_derived(pd.read_parquet(season_path(season)))
++
++
++# ---------------------------------------------------------------- stats by position
++
++# Stat groups shown for each position, most relevant first.
++POSITION_GROUPS = {
++    "QB": ["Passing", "Rushing"],
++    "RB": ["Rushing", "Receiving"],
++    "FB": ["Rushing", "Receiving"],
++    "WR": ["Receiving", "Rushing"],
++    "TE": ["Receiving", "Rushing"],
++}
++DEFAULT_STAT = {"QB": "passing_yards", "RB": "rushing_yards", "FB": "rushing_yards",
++                "WR": "receiving_yards", "TE": "receiving_yards"}
++GROUP_ACTIVITY = {"Passing": "attempts", "Rushing": "carries", "Receiving": "targets"}
++COMBO_NEEDS = {"pass_rush_yards": "Passing", "rush_rec_yards": "Receiving", "rush_rec_tds": "Receiving"}
++
++
++def stats_for_player(player_games: pd.DataFrame, show_all: bool = False) -> tuple[list[tuple], str, set[str]]:
++    """(stat tuples that fit this player, default stat col, core stat cols for the position).
++
++    Starts from the player's position, then adds any other group the player actually
++    recorded in the selected games (e.g. a WR with carries, a TE who threw a pass).
++    """
++    position = str(player_games["position"].iloc[-1]) if len(player_games) else ""
++    default = DEFAULT_STAT.get(position, STATS[0][2])
++    core_groups = POSITION_GROUPS.get(position, [])
++    # Stats that carry over when switching to this player. Trick-play groups are listed
++    # but never auto-selected (a WR's one pass attempt shouldn't keep "Passing yards").
++    core = {c for g, _, c in STATS if g in core_groups}
++    core |= {c for c, need in COMBO_NEEDS.items() if need in core_groups}
++    if show_all or position not in POSITION_GROUPS:
++        return list(STATS), default, core or {c for _, _, c in STATS}
++    groups = list(core_groups)
++    for group, col in GROUP_ACTIVITY.items():
++        if group not in groups and player_games[col].fillna(0).gt(0).any():
++            groups.append(group)
++    order = {g: i for i, g in enumerate(groups)}
++    picked = [s for s in STATS if s[0] in order]
++    picked.sort(key=lambda s: order[s[0]])  # stable: keeps the order within each group
++    picked += [s for s in STATS if s[0] == "Combos" and COMBO_NEEDS[s[2]] in order]
++    return picked, default, core
+diff --git a/tests/test_app.py b/tests/test_app.py
+index d897e3d..ebb4c00 100644
+--- a/tests/test_app.py
++++ b/tests/test_app.py
+@@ -50,7 +50,7 @@ def test_sport_state_is_independent_and_survives_switching():
+     assert "nfl_stat" in keys and "nba_stat" not in keys
+     if nfl.available_seasons():
+         assert at.selectbox(key="nfl_window").value == "Last 10"      # untouched by the NBA change
+-        at.selectbox(key="nfl_stat").set_value("Receiving · Receptions").run()
++        at.selectbox(key="nfl_stat").set_value("Passing · Passing TDs").run()
+         assert not at.exception
+ 
+     at.switch_page("views/nba.py").run()
+@@ -73,7 +73,7 @@ def test_nfl_page():
+     assert not at.exception
+     labels = [m.label for m in at.metric]
+     assert "Historical over rate" in labels
+-    at.selectbox(key="nfl_stat").set_value("Combos · Rush + Rec yards").run()
++    at.selectbox(key="nfl_stat").set_value("Combos · Pass + Rush yards").run()
+     assert not at.exception
+ 
+ 
+@@ -89,3 +89,31 @@ def test_about_page():
+     at = _app()
+     at.switch_page("views/about.py").run()
+     assert not at.exception
++
++
++def test_nfl_stat_list_follows_player_position():
++    if not nfl.available_seasons():
++        return
++    at = _app()
++    at.switch_page("views/nfl.py").run()
++    from sports import nfl as nflmod
++    df = nflmod.load_season(int(at.multiselect(key="nfl_seasons").value[-1]))
++    wr = df[df.position == "WR"].groupby("player_id")["receiving_yards"].sum().idxmax()
++    qb = df[df.position == "QB"].groupby("player_id")["passing_yards"].sum().idxmax()
++
++    at.selectbox(key="nfl_player").set_value(wr).run()
++    stat = at.selectbox(key="nfl_stat")
++    assert stat.value == "Receiving · Receiving yards"
++    assert stat.options[0].startswith("Receiving")
++
++    at.selectbox(key="nfl_stat").set_value("Receiving · Receptions").run()
++    at.selectbox(key="nfl_player").set_value(qb).run()
++    stat = at.selectbox(key="nfl_stat")
++    assert stat.value == "Passing · Passing yards"            # receptions doesn't fit a QB
++    assert stat.options[0].startswith("Passing")
++
++    at.selectbox(key="nfl_player").set_value(wr).run()       # back to the WR (who threw 1 pass)
++    assert at.selectbox(key="nfl_stat").value == "Receiving · Receiving yards"
++
++    at.toggle(key="nfl_all_stats").set_value(True).run()
++    assert len(at.selectbox(key="nfl_stat").options) == len(nflmod.STATS)
+diff --git a/tests/test_sports.py b/tests/test_sports.py
+index e3b9a4d..eff3b10 100644
+--- a/tests/test_sports.py
++++ b/tests/test_sports.py
+@@ -192,3 +192,49 @@ def test_nba_stored_snapshot_normalizes():
+ def test_nba_rejects_changed_schema():
+     with pytest.raises(ValueError):
+         nba.normalize(pd.DataFrame({"PLAYER_ID": [1]}), "2025-26", "Regular Season")
++
++
++# ---------------------------------------------------------------- NFL stats by position
++
++def _pg(position, **stats):
++    row = {c: 0 for c in nfl.RAW_STATS}
++    row.update(position=position, **stats)
++    return pd.DataFrame([row])
++
++
++def _groups(picked):
++    return [g for g, _, _ in picked]
++
++
++def test_qb_gets_passing_first_and_no_receiving():
++    picked, default, _core = nfl.stats_for_player(_pg("QB", attempts=30, carries=4))
++    assert default == "passing_yards"
++    assert _groups(picked)[0] == "Passing"
++    assert "Receiving" not in _groups(picked)
++    assert [c for g, _, c in picked if g == "Combos"] == ["pass_rush_yards"]
++
++
++def test_wr_gets_receiving_first_and_no_passing():
++    picked, default, _core = nfl.stats_for_player(_pg("WR", targets=8))
++    assert default == "receiving_yards"
++    assert _groups(picked)[0] == "Receiving"
++    assert "Passing" not in _groups(picked)
++    assert "rush_rec_yards" in [c for _, _, c in picked]
++
++
++def test_rb_gets_rushing_then_receiving():
++    picked, default, _core = nfl.stats_for_player(_pg("RB", carries=15, targets=3))
++    assert default == "rushing_yards"
++    assert _groups(picked)[:2] == ["Rushing", "Rushing"]
++    assert "Receiving" in _groups(picked) and "Passing" not in _groups(picked)
++
++
++def test_trick_play_adds_the_group_the_player_actually_recorded():
++    picked, _d, core = nfl.stats_for_player(_pg("WR", targets=5, attempts=1))   # WR threw a pass
++    assert "Passing" in _groups(picked)
++    assert "passing_yards" not in core          # listed, but never auto-kept on a player switch
++
++
++def test_show_all_returns_every_stat():
++    picked, default, _core = nfl.stats_for_player(_pg("TE"), show_all=True)
++    assert picked == nfl.STATS and default == "receiving_yards"
+diff --git a/views/nfl.py b/views/nfl.py
+index b373d64..5907949 100644
+--- a/views/nfl.py
++++ b/views/nfl.py
+@@ -5,12 +5,19 @@ import streamlit as st
+ from core.ui import SportView, StatOption, data_status, render_analysis
+ from sports import nfl
+ 
++
++def stats_for(player_games):
++    picked, default, core = nfl.stats_for_player(player_games, st.session_state.get("nfl_all_stats", False))
++    return [StatOption(g, label, col) for g, label, col in picked], default, core
++
++
+ VIEW = SportView(
+     prefix="nfl",
+     sport="nfl",
+     stats=[StatOption(g, label, col) for g, label, col in nfl.STATS],
+     season_types=["Regular Season", "Postseason"],
+     season_label=lambda s: f"{s} season",
++    stats_for=stats_for,
+     extra_cols=[("week", "Week"), ("round", "Round"), ("position", "Pos")],
+     participation_note=(
+         "A game counts when the player has a row in nflverse's weekly player stats, which means they "
+@@ -46,6 +53,10 @@ with st.sidebar:
+     st.session_state.setdefault("nfl_positions", nfl.POSITIONS)
+     st.multiselect("Positions", ["QB", "RB", "FB", "WR", "TE"], key="nfl_positions",
+                    help="Limits the player list. Stats come from each player's listed nflverse position.")
++    st.session_state.setdefault("nfl_all_stats", False)
++    st.toggle("Show every stat for every player", key="nfl_all_stats",
++              help="Off: the stat list matches the player's position (e.g. receiving stats for WRs), "
++                   "plus anything else they actually recorded. On: all NFL stats.")
+ 
+ seasons = [str(s) for s in nfl.available_seasons()]
+ if not seasons:
