@@ -35,7 +35,8 @@ def test_nba_stats_and_combos_still_work():
     at = _app()
     for stat in ["Pts + Reb + Ast (PRA)", "Pts + Reb (PR)", "Pts + Ast (PA)", "Reb + Ast (RA)",
                  "Steals", "Blocks", "3-pointers made", "3-pointers attempted",
-                 "Field goals made", "Field goals attempted"]:
+                 "Field goals made", "Field goals attempted", "Free throws made",
+                 "Free throws attempted"]:
         at.selectbox(key="nba_stat").set_value(stat).run()
         assert not at.exception, (stat, at.exception)
 

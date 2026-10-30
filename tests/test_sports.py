@@ -189,6 +189,7 @@ def test_nba_stored_snapshot_normalizes():
     assert row["BLK_STL"] == row["BLK"] + row["STL"]
     assert (df["FGM"] <= df["FGA"]).all() and (df["FG3M"] <= df["FG3A"]).all()
     assert (df["FG3A"] <= df["FGA"]).all()
+    assert (df["FTM"] <= df["FTA"]).all()
 
 
 def test_nba_rejects_changed_schema():

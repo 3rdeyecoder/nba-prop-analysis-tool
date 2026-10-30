@@ -22,7 +22,7 @@ probability for the next game. There are no odds, sportsbook integrations or bet
 - Game-log table and CSV download of exactly the games shown
 
 **NBA**: points, rebounds, assists, 3-pointers made and attempted, field goals made and
-attempted, steals, blocks, PRA, PR, PA, RA, blocks + steals;
+attempted, free throws made and attempted, steals, blocks, PRA, PR, PA, RA, blocks + steals;
 headshot card, quick hit-rate strip, streaks, distribution, trend summary, rolling average,
 opponent and home/away splits.
 

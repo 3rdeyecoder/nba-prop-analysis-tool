@@ -20,7 +20,7 @@ from core.metrics import dedupe
 
 SEASON_TYPES = {"Regular Season": "", "Playoffs": "_playoffs"}
 
-# label -> column. Original app's stats, plus STL, BLK and shooting volume (FGM/FGA/3PA).
+# label -> column. Original app's stats, plus STL, BLK and shooting volume (FGM/FGA/3PA/FTM/FTA).
 STATS = {
     "Points": "PTS",
     "Rebounds": "REB",
@@ -29,6 +29,8 @@ STATS = {
     "3-pointers attempted": "FG3A",
     "Field goals made": "FGM",
     "Field goals attempted": "FGA",
+    "Free throws made": "FTM",
+    "Free throws attempted": "FTA",
     "Steals": "STL",
     "Blocks": "BLK",
     "Pts + Reb + Ast (PRA)": "PRA",
@@ -41,7 +43,7 @@ STATS = {
 NUM_COLS = ["PTS", "REB", "AST", "FGA", "FGM", "FG3A", "FG3M", "FTA", "FTM",
             "DREB", "OREB", "STL", "BLK", "TOV", "PF", "MIN"]
 REQUIRED = ["PLAYER_ID", "PLAYER_NAME", "TEAM_ABBREVIATION", "GAME_ID", "GAME_DATE", "MATCHUP",
-            "PTS", "REB", "AST", "FGM", "FGA", "FG3M", "FG3A", "STL", "BLK", "MIN"]
+            "PTS", "REB", "AST", "FGM", "FGA", "FG3M", "FG3A", "FTM", "FTA", "STL", "BLK", "MIN"]
 
 _FILE_RE = re.compile(r"league_logs_(\d{4}-\d{2})(_playoffs)?\.csv\.gz$")
 
