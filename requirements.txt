@@ -4,6 +4,7 @@ pandas>=2.2
 numpy>=1.26
 plotly>=5.20
 pyarrow>=15          # Parquet storage for NFL and MLB
+tzdata               # timezone database for showing refresh times in each visitor's zone
 
 # Refresh scripts (run locally; not needed for browsing, but harmless on Cloud)
 nba_api>=1.10

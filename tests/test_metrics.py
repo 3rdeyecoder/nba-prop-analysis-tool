@@ -95,3 +95,25 @@ def test_default_line_snaps_below_average():
     assert default_line(pd.Series([20, 25])) == 22.5
     assert default_line(pd.Series([], dtype=float)) == 0.5
     assert not math.isnan(default_line(pd.Series([None, 3.0])))
+
+
+def test_refresh_time_shown_in_viewer_timezone(monkeypatch):
+    from zoneinfo import ZoneInfo
+    from core import ui
+    stamp = "2026-10-30T05:05:00+00:00"
+    for tz, want in [("America/New_York", "Oct 30, 2026, 1:05 AM EDT"),
+                     ("America/Chicago", "Oct 30, 2026, 12:05 AM CDT"),
+                     ("America/Denver", "Oct 29, 2026, 11:05 PM MDT"),
+                     ("America/Phoenix", "Oct 29, 2026, 10:05 PM MST"),
+                     ("America/Los_Angeles", "Oct 29, 2026, 10:05 PM PDT")]:
+        monkeypatch.setattr(ui, "viewer_timezone", lambda tz=tz: ZoneInfo(tz))
+        assert ui.local_time(stamp) == want
+    # winter: standard time abbreviations
+    monkeypatch.setattr(ui, "viewer_timezone", lambda: ZoneInfo("America/New_York"))
+    assert ui.local_time("2027-01-15T17:30:00+00:00") == "Jan 15, 2027, 12:30 PM EST"
+    assert ui.local_time(None) == "unknown"
+
+
+def test_viewer_timezone_falls_back_to_eastern():
+    from core import ui
+    assert str(ui.viewer_timezone()) == "America/New_York"   # no browser outside a live session

@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Callable
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import numpy as np
 import pandas as pd
@@ -331,19 +332,44 @@ def game_table(sel: Selection, view: SportView) -> None:
                        file_name=f"{fname}.csv", mime="text/csv", key=f"dl_{view.prefix}")
 
 
+DEFAULT_TZ = "America/New_York"  # used when the browser doesn't report a timezone
+
+
+def viewer_timezone() -> ZoneInfo:
+    """The visitor's browser timezone (Eastern, Central, Mountain, Pacific...), else Eastern."""
+    try:
+        name = st.context.timezone
+        if name:
+            return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError, AttributeError):
+        pass
+    return ZoneInfo(DEFAULT_TZ)
+
+
+def local_time(iso_utc: str | None) -> str:
+    """'2026-10-30T05:05:00+00:00' -> 'Oct 30, 2026, 1:05 AM EDT' in the viewer's timezone."""
+    if not iso_utc:
+        return "unknown"
+    try:
+        dt = datetime.fromisoformat(iso_utc)
+    except ValueError:
+        return iso_utc
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    local = dt.astimezone(viewer_timezone())
+    return f"{local:%b} {local.day}, {local:%Y}, {local.strftime('%I').lstrip('0')}:{local:%M %p %Z}"
+
+
 def data_status(sport: str, df: pd.DataFrame | None, source: str) -> None:
     """Last successful refresh and data coverage, shown separately."""
     meta = read_meta(sport)
     last = meta.get("last_success_utc")
-    if last:
-        when = datetime.fromisoformat(last).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
-    else:
-        when = "unknown (no refresh recorded yet)"
+    when = local_time(last) if last else "unknown (no refresh recorded yet)"
     cov = "no data loaded"
     if df is not None and not df.empty:
         d = pd.to_datetime(df["game_date"])
         cov = f"{d.min():%b %d, %Y} → {d.max():%b %d, %Y} ({len(df):,} player-games loaded)"
     st.caption(f"🕒 Last successful refresh: {when}  \n📅 Coverage in this view: {cov}  \nSource: {source}")
     if meta.get("last_error"):
-        st.caption(f"⚠️ Most recent refresh attempt failed ({meta.get('last_attempt_utc')}); "
+        st.caption(f"⚠️ Most recent refresh attempt failed ({local_time(meta.get('last_attempt_utc'))}); "
                    "showing the last good data.")
