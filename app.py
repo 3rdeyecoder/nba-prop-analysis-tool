@@ -8,11 +8,13 @@ MLB data.
 import streamlit as st
 
 from core import style
+from core.analytics import add_google_analytics
 from core.config import APP_ICON, APP_NAME, APP_SUBTITLE
 
 st.set_page_config(page_title=APP_NAME, page_icon=APP_ICON, layout="wide", initial_sidebar_state="auto")
 style.apply()
 style.apply_nav()
+add_google_analytics()
 
 # Streamlit deletes a widget's state when the widget isn't drawn on a rerun, which would
 # wipe NBA selections while NFL is open. Re-assigning the sport-prefixed keys here (before

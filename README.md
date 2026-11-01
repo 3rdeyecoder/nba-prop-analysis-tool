@@ -166,6 +166,13 @@ doubleheaders, duplicate records, NFL season and postseason handling, MLB total 
 outs ↔ innings, strikeout separation, two-way players, atomic writes and retry limits, plus
 Streamlit `AppTest` runs of every page, including independent state between sports.
 
+## Analytics
+
+Google Analytics 4 is added in `core/analytics.py` with the measurement ID in `core/config.py`
+(`GA_MEASUREMENT_ID`; set it to `""` to turn tracking off). It loads once per visit, is skipped
+when running on localhost, and counts NBA/NFL/MLB switches as page views through GA4's
+"page changes based on browser history events" setting. Ad blockers will hide some visits.
+
 ## Data sources and terms
 
 - **NBA**: stats.nba.com via [`nba_api`](https://github.com/swar/nba_api). Unofficial endpoints;

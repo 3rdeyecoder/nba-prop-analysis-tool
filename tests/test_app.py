@@ -119,3 +119,8 @@ def test_nfl_stat_list_follows_player_position():
 
     at.toggle(key="nfl_all_stats").set_value(True).run()
     assert len(at.selectbox(key="nfl_stat").options) == len(nflmod.STATS)
+
+
+def test_analytics_skipped_outside_live_site():
+    at = _app()
+    assert not any("googletagmanager" in str(getattr(h, "proto", "")) for h in at.get("html"))
