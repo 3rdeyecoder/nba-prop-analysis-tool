@@ -80,18 +80,18 @@ NAV_CSS = """
 }
 .st-key-sport_nav a[data-testid="stPageLink-NavLink"] p { font-weight: 700; font-size: 1.08rem !important; }
 /* Call It: game-style tab that stands out from the research tabs */
-.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href="callit"] {
+.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href$="callit"] {
   background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%) !important;
   border-color: transparent !important;
   box-shadow: 0 2px 10px rgba(219, 39, 119, 0.35);
   transition: transform 0.15s ease, filter 0.15s ease;
 }
-.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href="callit"] p,
-.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href="callit"] span { color: #fff !important; }
-.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href="callit"]:hover {
+.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href$="callit"] p,
+.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href$="callit"] span { color: #fff !important; }
+.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href$="callit"]:hover {
   filter: brightness(1.08); transform: translateY(-1px);
 }
-.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href="callit"]::after {
+.st-key-sport_nav a[data-testid="stPageLink-NavLink"][href$="callit"]::after {
   content: "PLAY"; margin-left: 6px; padding: 1px 7px; border-radius: 999px;
   background: rgba(255, 255, 255, 0.25); color: #fff; font-size: 0.62rem; font-weight: 800;
   letter-spacing: 0.06em;
