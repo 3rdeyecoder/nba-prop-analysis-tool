@@ -1,0 +1,27 @@
+{
+  "last_attempt_utc": "2026-11-02T00:44:22+00:00",
+  "seasons": {
+    "2025 hitting": {
+      "rows": 49816,
+      "first_game": "2025-03-18",
+      "last_game": "2025-11-01"
+    },
+    "2025 pitching": {
+      "rows": 21341,
+      "first_game": "2025-03-18",
+      "last_game": "2025-11-01"
+    },
+    "2026 hitting": {
+      "rows": 50460,
+      "first_game": "2026-03-25",
+      "last_game": "2026-10-28"
+    },
+    "2026 pitching": {
+      "rows": 21204,
+      "first_game": "2026-03-25",
+      "last_game": "2026-10-28"
+    }
+  },
+  "last_success_utc": "2026-11-02T00:44:22+00:00",
+  "last_error": null
+}
