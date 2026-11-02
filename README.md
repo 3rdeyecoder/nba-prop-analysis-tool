@@ -24,6 +24,20 @@ applying after its `until` date. A "Who's left out?" note on the page lists both
 Every card shows its sample size and date range, plus how fresh the data is. Minimum minutes and
 averages keep tiny samples out. Logic lives in `sports/insights.py` (tested).
 
+**🎯 Call It (daily puzzle)**: 5 real past NBA games from every stored season (2019-20 to
+today). For each, you see the player's 10 games before that night and call over or under the line,
+then the result is revealed with a link into that player's analysis. Everyone gets the same puzzle
+each day (US Eastern date). The results screen shows the score with a title, a spoiler-free share
+grid (🟩🟥), and a recap of player cards. Each card shows the team, opponent logo and season from the
+night of that game; photos are the player's current headshot (NBA's image server only has current ones).
+- The line is the **median** of the 10 games shown (moved to the .5 below if it's a whole number),
+  so no ties are possible. Across all ~66k playable games this line goes over 48% of the time
+  (47.8–50.1% per stat); an average-based line went over only 44.5%, because big nights pull
+  averages up.
+- Rounds need 10+ earlier games that season, 25+ minutes a night, and a stat minimum. Games are
+  picked without looking at results, only games 3+ days old are used (so a refresh can't change
+  today's puzzle), and every round is a different player. Logic: `sports/callit.py` (tested).
+
 **Shareable links**: every view's settings live in the URL (sport, player, stat, seasons,
 window, opponent, home/away, line), and the address bar updates as you change filters. Each
 page has a "Share this view" box. Set `APP_URL` in `core/config.py` if the app's address changes.
@@ -164,7 +178,7 @@ relying on it; stats.nba.com in particular often blocks cloud IP ranges.
 ## Project layout
 
 ```
-app.py                 entry point: title, Today's Lab | NBA | NFL | MLB navigation, state
+app.py                 entry point: title, Today's Lab | Call It | NBA | NFL | MLB navigation, state
 core/
   config.py            app name/subtitle (rebrand here), colors, window options
   metrics.py           over/under/push, summaries, ordering, dedupe, outs <-> innings, total bases
@@ -176,8 +190,10 @@ core/
 sports/
   nba.py nfl.py mlb.py data normalization and stored-file readers (no network)
   insights.py          Today's Lab calculations
+  callit.py            Call It puzzle generation
 views/
   today.py             Today's Lab (home page)
+  callit.py            Call It daily puzzle
   nba.py nfl.py mlb.py about.py   one Streamlit page per sport
 refresh/
   nba.py nfl.py mlb.py ingestion scripts (network lives here only)

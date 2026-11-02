@@ -5,6 +5,7 @@ from datetime import datetime
 import pandas as pd
 import streamlit as st
 
+from core import cards as card_ui
 from core import links, unavailable
 from core.storage import read_meta
 from core.ui import local_time, viewer_timezone
@@ -38,60 +39,13 @@ def _range(a, b) -> str:
     return f"{a:%b} {a.day}, {a:%Y} – {b:%b} {b.day}, {b:%Y}" if a.year != b.year else f"{a:%b} {a.day} – {b:%b} {b.day}, {b:%Y}"
 
 
-HEADSHOT = "https://cdn.nba.com/headshots/nba/latest/260x190/{}.png"
-LOGO = "https://cdn.nba.com/logos/nba/{}/global/L/logo.svg"
-
-CARD_CSS = """
-<style>
-[class*="st-key-pc_"] { padding: 0 !important; overflow: hidden; }
-[class*="st-key-pc_"] [data-testid="stPageLink"] { padding: 0 12px 10px; }
-.pc-top { position: relative; height: 112px; display: flex; align-items: flex-end; justify-content: center;
-  background: linear-gradient(160deg, rgba(107,138,253,0.22), rgba(47,191,113,0.12)); }
-.pc-shot { height: 104px; width: auto; display: block; }
-.pc-logo { position: absolute; top: 8px; right: 8px; width: 30px; height: 30px; }
-.pc-rank { position: absolute; top: 8px; left: 10px; font-weight: 800; font-size: 0.85rem; opacity: 0.75; }
-.pc-body { padding: 10px 12px 4px; }
-.pc-name { font-weight: 800; font-size: 1.02rem; line-height: 1.2; }
-.pc-team { font-size: 0.8rem; opacity: 0.7; margin-bottom: 6px; }
-.pc-body .pc-big { font-size: 2.1rem !important; font-weight: 800; line-height: 1.05 !important;
-  letter-spacing: -0.02em; margin: 2px 0; }
-.pc-body .pc-big span { font-size: 0.85rem !important; font-weight: 600; opacity: 0.7; margin-left: 4px;
-  letter-spacing: 0; }
-.pc-body .pc-name { font-size: 1.05rem !important; }
-.pc-pill { display: inline-block; margin: 6px 0 4px; padding: 2px 9px; border-radius: 999px;
-  font-size: 0.8rem; font-weight: 700; }
-.pc-pill.up { color: #1f9d5c; background: rgba(47,191,113,0.15); }
-.pc-pill.steady { color: #4f6fe0; background: rgba(107,138,253,0.15); }
-.pc-sub { font-size: 0.83rem; opacity: 0.85; }
-.pc-meta { font-size: 0.72rem; opacity: 0.6; margin-top: 6px; line-height: 1.35; }
-.pc-vs { display: flex; align-items: center; gap: 6px; font-size: 0.8rem; opacity: 0.8; margin-bottom: 6px; }
-.pc-vs img { width: 20px; height: 20px; }
-@media (max-width: 640px) {   /* phones: one full-width card per row */
-  div:has(> [class*="st-key-pc_"]), [class*="st-key-pc_"] {
-    width: 100% !important; max-width: 100% !important; flex: 1 1 100% !important; }
-  .pc-top { height: 128px; }
-  .pc-shot { height: 120px; }
-}
-</style>
-"""
-
-
 def player_card(key: str, rank: int, row: pd.Series, big: str, unit_label: str, pill: str, pill_kind: str,
                 sub: str, meta: str, link: dict, team_line: str | None = None) -> None:
-    """One player card: headshot, team logo, headline number, change pill, sample, link."""
     team_id = row.get("team_id")
-    logo = f'<img class="pc-logo" src="{LOGO.format(int(team_id))}" alt="">' if pd.notna(team_id) else ""
-    team_line = team_line or f'<div class="pc-team">{row["team"]}</div>'
-    with st.container(border=True, width=232, key=f"pc_{key}"):
-        st.markdown(
-            f'<div class="pc-top"><span class="pc-rank">#{rank}</span>'
-            f'<img class="pc-shot" src="{HEADSHOT.format(row["player_id"])}" alt="">{logo}</div>'
-            f'<div class="pc-body"><div class="pc-name">{row["player_name"]}</div>{team_line}'
-            f'<div class="pc-big">{big}<span>{unit_label}</span></div>'
-            f'<div class="pc-pill {pill_kind}">{pill}</div>'
-            f'<div class="pc-sub">{sub}</div><div class="pc-meta">{meta}</div></div>',
-            unsafe_allow_html=True)
-        st.page_link("views/nba.py", label="Open analysis →", query_params=link)
+    card_ui.player_card(key, player_id=row["player_id"], name=row["player_name"], team=row["team"],
+                      team_id=team_id if pd.notna(team_id) else None, badge=f"#{rank}", big=big,
+                      unit_label=unit_label, pill=pill, pill_kind=pill_kind, sub=sub, meta=meta, link=link,
+                      team_line=team_line)
 
 
 def section(title: str, how: str, rows: pd.DataFrame, draw, empty: str) -> None:
@@ -138,7 +92,7 @@ st.caption(f"📅 Data through **{_d(df['game_date'].max())}** (latest game stor
            f"🕒 Last refresh: {local_time(meta.get('last_success_utc'))} · "
            "Findings describe past games. They are not predictions.")
 
-st.markdown(CARD_CSS, unsafe_allow_html=True)
+card_ui.apply_css()
 
 # Who's left out, and why (so a missing star doesn't look like a bug)
 current = df[df["season_year"] == df["season_year"].max()]
@@ -184,8 +138,7 @@ def steady_card(i, r):
 
 
 def matchup_card(i, r):
-    opp_logo = (f'<img src="{LOGO.format(int(r["opp_team_id"]))}" alt="">'
-                if pd.notna(r.get("opp_team_id")) else "")
+    opp_logo = card_ui.logo_img(r.get("opp_team_id") if pd.notna(r.get("opp_team_id")) else None, cls="")
     team_line = f'<div class="pc-vs">{r["team"]} vs {opp_logo}<b>{r["opponent"]}</b></div>'
     player_card(f"match_{i}", i, r, f"{r['opp_avg']:.1f}", f"{unit} vs {r['opponent']}",
                 f"{_arrow(r['change'])} vs overall", "up",

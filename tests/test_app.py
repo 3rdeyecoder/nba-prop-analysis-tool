@@ -168,3 +168,18 @@ def test_link_for_another_sport_is_ignored():
     assert not at.exception, at.exception
     if nfl.available_seasons():
         assert at.selectbox(key="nfl_window").value == "Last 10"      # NBA link didn't touch NFL
+
+
+def test_call_it_full_game():
+    at = _app(page="views/callit.py")
+    for i in range(5):
+        over = [b for b in at.button if b.key and b.key.endswith(f"_{i}_over")]
+        assert over, f"round {i + 1} buttons missing"
+        over[0].click().run()
+        assert not at.exception, at.exception
+    assert any("Your recap" in h.value for h in at.subheader)
+    assert any('class="ci-num"' in m.value for m in at.markdown)               # score banner
+    assert sum('class="pc-top good"' in m.value or 'class="pc-top bad"' in m.value
+               for m in at.markdown) == 5                                       # 5 recap cards
+    share = at.code[0].value
+    assert share.startswith("Playmaker Lab · Call It #") and len(share.splitlines()[1]) == 5

@@ -25,18 +25,19 @@ for _k in list(st.session_state.keys()):
 
 # Today's Lab is the home page ("/"); sports live at /nba, /nfl and /mlb.
 home = st.Page("views/today.py", title="Today's Lab", icon="🧪", url_path="today", default=True)
+call_it = st.Page("views/callit.py", title="Call It", icon="🎯", url_path="callit")
 sport_pages = [
     st.Page("views/nba.py", title="NBA", icon="🏀", url_path="nba"),
     st.Page("views/nfl.py", title="NFL", icon="🏈", url_path="nfl"),
     st.Page("views/mlb.py", title="MLB", icon="⚾", url_path="mlb"),
 ]
 about = st.Page("views/about.py", title="About / How it works", icon="ℹ️", url_path="about")
-nav = st.navigation([home] + sport_pages + [about], position="hidden")
+nav = st.navigation([home] + sport_pages + [call_it, about], position="hidden")
 
 st.title(f"{APP_ICON} {APP_NAME}")
 st.caption(APP_SUBTITLE + " · Historical research, not picks.")
 with st.container(horizontal=True, gap="small", key="sport_nav"):
-    for page in [home] + sport_pages:
+    for page in [home] + sport_pages + [call_it]:
         st.page_link(page)  # Streamlit adds the page icon
 st.sidebar.page_link(about)
 
