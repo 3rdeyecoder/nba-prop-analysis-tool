@@ -79,6 +79,11 @@ NAV_CSS = """
   border: 1px solid rgba(128,128,128,0.30); border-radius: 12px; padding: 6px 16px; justify-content: center; white-space: nowrap;
 }
 .st-key-sport_nav a[data-testid="stPageLink-NavLink"] p { font-weight: 700; font-size: 1.08rem !important; }
+@media (max-width: 640px) {   /* phones: tighter tabs that wrap onto a second row if needed */
+  .st-key-sport_nav { flex-wrap: wrap !important; gap: 6px !important; }
+  .st-key-sport_nav a[data-testid="stPageLink-NavLink"] { padding: 5px 10px; }
+  .st-key-sport_nav a[data-testid="stPageLink-NavLink"] p { font-size: 0.95rem !important; }
+}
 </style>
 """
 

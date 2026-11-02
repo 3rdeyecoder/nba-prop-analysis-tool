@@ -12,6 +12,7 @@ from sports import nba
 VIEW = SportView(
     prefix="nba",
     sport="nba",
+    url_path="nba",
     stats=[StatOption("", label, col) for label, col in nba.STATS.items()],
     season_types=list(nba.SEASON_TYPES),
     extra_cols=[("MIN", "MIN")],

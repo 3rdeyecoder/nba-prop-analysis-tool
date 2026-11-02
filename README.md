@@ -11,6 +11,23 @@ probability for the next game. There are no odds, sportsbook integrations or bet
 
 ## Features
 
+**Today's Lab (home page)**: starting points from recent NBA games, each linking straight into
+the full analysis with the right player, stat and filters selected:
+- *Heating up*: last 5 games (all this season) vs the 30 before them, with minutes before/after.
+- *Consistency corner*: smallest spread relative to average over the last 10 games.
+- *Matchup history*: biggest gap between a player's average vs one team and overall (last 3
+  seasons, 6+ games vs that team).
+Cards only include players who **played in their team's most recent game**, so anyone currently out
+(injury, rest or suspension) drops off until they play again. For absences the game logs can't show
+yet, add a row to `data/unavailable.csv` (sport, player_id, player_name, until, note); it stops
+applying after its `until` date. A "Who's left out?" note on the page lists both groups.
+Every card shows its sample size and date range, plus how fresh the data is. Minimum minutes and
+averages keep tiny samples out. Logic lives in `sports/insights.py` (tested).
+
+**Shareable links**: every view's settings live in the URL (sport, player, stat, seasons,
+window, opponent, home/away, line), and the address bar updates as you change filters. Each
+page has a "Share this view" box. Set `APP_URL` in `core/config.py` if the app's address changes.
+
 **Every sport**
 - Searchable player picker (keyed by stable player IDs, so traded players stay one player)
 - Season and season-type (regular season / postseason) selectors
@@ -125,6 +142,17 @@ schedule request per season, then one boxscore per completed game not already st
 0.5 s apart (`--delay`). Rows are keyed by player + gamePk, so reruns don't duplicate. After 5
 consecutive failures the run stops and saves what it has. Pitch-level Statcast data is not used.
 
+### Automatic daily refresh (GitHub Actions)
+
+`.github/workflows/refresh-data.yml` runs every morning (~6–7 AM Eastern). It refreshes NFL,
+NBA and MLB independently, commits any new data (which redeploys the Streamlit app), and posts a
+per-sport success/failure summary on the run's page. A sport that fails leaves its stored files
+exactly as they were. Run it by hand from GitHub: **Actions → Refresh data → Run workflow**.
+
+stats.nba.com often blocks cloud servers like GitHub's. If the NBA step keeps failing there,
+keep running `python -m refresh.nba --types regular` on your own machine. Run `git pull` first
+so you have the bot's latest commits, then push as usual.
+
 ### Scheduling
 
 Run the commands above on a schedule you control (cron, Task Scheduler, or a GitHub Actions
@@ -136,22 +164,27 @@ relying on it; stats.nba.com in particular often blocks cloud IP ranges.
 ## Project layout
 
 ```
-app.py                 entry point: title, NBA | NFL | MLB navigation, per-sport state
+app.py                 entry point: title, Today's Lab | NBA | NFL | MLB navigation, state
 core/
   config.py            app name/subtitle (rebrand here), colors, window options
   metrics.py           over/under/push, summaries, ordering, dedupe, outs <-> innings, total bases
   storage.py           atomic writes, refresh metadata, bounded retries, schema checks
   ui.py                shared controls, summary cards, chart, table, CSV, data status
+  links.py             shareable links (settings <-> URL)
+  analytics.py         Google Analytics tag
   style.py             design CSS from the original app
 sports/
   nba.py nfl.py mlb.py data normalization and stored-file readers (no network)
+  insights.py          Today's Lab calculations
 views/
+  today.py             Today's Lab (home page)
   nba.py nfl.py mlb.py about.py   one Streamlit page per sport
 refresh/
   nba.py nfl.py mlb.py ingestion scripts (network lives here only)
 data/                  stored datasets + data/meta/<sport>.json (last refresh, coverage)
 tests/                 pytest suite
 fetch_data.py          backward-compatible wrapper for refresh.nba
+.github/workflows/     daily automatic data refresh
 ```
 
 ## Tests

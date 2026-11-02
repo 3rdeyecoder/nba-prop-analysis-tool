@@ -49,7 +49,8 @@ def refresh_season(session, season: int, recent_days: int, delay: float, max_gam
                                             "gameType": "R,F,D,L,W", "hydrate": "team"})
     games = mlb.parse_schedule(sched)
     if games.empty:
-        raise ValueError(f"no completed games in the {season} schedule")
+        log.info("%s: no completed games yet (season hasn't started); nothing to do", season)
+        return {}
 
     old_hit, old_pit = _read("hitting", season), _read("pitching", season)
     stored = set(old_hit.get("game_id", pd.Series(dtype=str))) | set(old_pit.get("game_id", pd.Series(dtype=str)))

@@ -18,7 +18,7 @@ def _ip_display(values: pd.Series, col: str) -> pd.Series:
 
 
 HITTERS = SportView(
-    prefix="mlb_hit", sport="mlb",
+    prefix="mlb_hit", sport="mlb", url_path="mlb",
     stats=[StatOption(g, label, col) for g, label, col in mlb.HITTER_STATS],
     season_types=["Regular Season", "Postseason"],
     extra_cols=[("round", "Round"), ("batting_order", "Bat. order"), ("pa", "PA")],
@@ -27,7 +27,7 @@ HITTERS = SportView(
                         "Strikeouts here are the batter's own strikeouts. " + COMMON_RULES),
 )
 PITCHERS = SportView(
-    prefix="mlb_pit", sport="mlb",
+    prefix="mlb_pit", sport="mlb", url_path="mlb",
     stats=[StatOption(g, label, col) for g, label, col in mlb.PITCHER_STATS],
     season_types=["Regular Season", "Postseason"],
     extra_cols=[("round", "Round"), ("ip", "IP"), ("started", "Start"), ("pitches", "Pitches")],
@@ -74,6 +74,13 @@ def load_pitchers(seasons, season_type):
     return df
 
 
+# A shared link can open Hitters or Pitchers directly (?role=pitchers)
+_qp = st.query_params.to_dict()
+if _qp.get("sport", "mlb") == "mlb" and _qp.get("role") in ("hitters", "pitchers") and _qp not in (
+        st.session_state.get("mlb_hit_url_written"), st.session_state.get("mlb_pit_url_written")):
+    st.session_state["mlb_role"] = _qp["role"].capitalize()
+    if _qp["role"] == "pitchers" and _qp.get("scope") == "all":
+        st.session_state["mlb_pit_scope"] = "Starts + relief"
 st.session_state.setdefault("mlb_role", "Hitters")
 role = st.segmented_control("Section", ["Hitters", "Pitchers"], key="mlb_role", label_visibility="collapsed")
 role = role or "Hitters"
@@ -94,7 +101,7 @@ elif role == "Hitters":
     c2.number_input("Minimum plate appearances", min_value=1, max_value=8, step=1, key="mlb_hit_min_pa",
                     help="Games with fewer PAs are excluded before the recent-games window.")
     try:
-        sel = render_analysis(HITTERS, seasons, load_hitters)
+        sel = render_analysis(HITTERS, seasons, load_hitters, url_extra={"role": "hitters"})
     except Exception as e:  # noqa: BLE001
         st.error(f"The MLB hitters section hit an error and couldn't render: {e}")
 else:
@@ -102,7 +109,8 @@ else:
     st.radio("Appearances", ["Starts only", "Starts + relief"], key="mlb_pit_scope", horizontal=True,
              help="Starts only is the default for pitcher props.")
     try:
-        sel = render_analysis(PITCHERS, seasons, load_pitchers)
+        scope = {"scope": "all"} if st.session_state.get("mlb_pit_scope") == "Starts + relief" else {}
+        sel = render_analysis(PITCHERS, seasons, load_pitchers, url_extra={"role": "pitchers", **scope})
     except Exception as e:  # noqa: BLE001
         st.error(f"The MLB pitchers section hit an error and couldn't render: {e}")
 

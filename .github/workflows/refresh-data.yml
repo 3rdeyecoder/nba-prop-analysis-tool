@@ -1,0 +1,80 @@
+# Refreshes stored data every morning and commits it, which also redeploys the Streamlit app.
+# Run it by hand from GitHub: Actions -> "Refresh data" -> Run workflow.
+name: Refresh data
+
+on:
+  schedule:
+    - cron: "15 11 * * *"   # 11:15 UTC daily = 6:15 AM EST / 7:15 AM EDT
+  workflow_dispatch:
+
+permissions:
+  contents: write           # lets the job commit the refreshed data
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      # Each sport runs independently: one failing never blocks the others.
+      - name: NFL (nflverse)
+        id: nfl
+        continue-on-error: true
+        run: python -m refresh.nfl
+
+      - name: NBA (stats.nba.com; often blocks cloud servers)
+        id: nba
+        continue-on-error: true
+        run: python -m refresh.nba --types regular
+
+      - name: MLB (MLB Stats API)
+        id: mlb
+        continue-on-error: true
+        run: python -m refresh.mlb
+
+      # If a sport failed, leave its files exactly as they were, so a failed bot run never
+      # overwrites (or conflicts with) data you refreshed yourself.
+      - name: Drop files from failed sports
+        run: |
+          restore() {   # put tracked files back and delete any new ones
+            git checkout -- "$@" 2>/dev/null || true
+            git clean -fq -- "$@"
+          }
+          if [ "${{ steps.nfl.outcome }}" = "failure" ]; then restore data/nfl data/meta/nfl.json; fi
+          if [ "${{ steps.nba.outcome }}" = "failure" ]; then restore 'data/league_logs_*' data/meta/nba.json; fi
+          if [ "${{ steps.mlb.outcome }}" = "failure" ]; then restore data/mlb data/meta/mlb.json; fi
+          git status --short
+
+      - name: Commit and push if anything changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          if git diff --cached --quiet; then
+            echo "No data changes today."
+            exit 0
+          fi
+          git commit -m "Automated data refresh $(date -u +%Y-%m-%d)"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Data refresh" >> "$GITHUB_STEP_SUMMARY"
+          echo "- NFL: ${{ steps.nfl.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- NBA: ${{ steps.nba.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- MLB: ${{ steps.mlb.outcome }}" >> "$GITHUB_STEP_SUMMARY"

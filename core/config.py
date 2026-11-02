@@ -24,3 +24,7 @@ LINE_COLOR = "#8b8f98"
 # Google Analytics 4 measurement ID (public; it appears in every visitor's browser anyway).
 # Set to "" to turn tracking off.
 GA_MEASUREMENT_ID = "G-SJRKLF63C6"
+
+# Public address of the deployed app, used for "Share this view" links.
+# Update this if you change your Streamlit subdomain.
+APP_URL = "https://nbabetting.streamlit.app"

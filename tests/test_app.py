@@ -8,10 +8,14 @@ from sports import mlb, nfl
 APP = str(Path(__file__).resolve().parent.parent / "app.py")
 
 
-def _app():
+def _app(page: str | None = "views/nba.py"):
+    """Start the app (home = Today's Lab), then open `page` if given."""
     at = AppTest.from_file(APP, default_timeout=120)
     at.run()
     assert not at.exception, at.exception
+    if page:
+        at.switch_page(page).run()
+        assert not at.exception, at.exception
     return at
 
 
@@ -19,7 +23,19 @@ def _keys(at):
     return {w.key for w in list(at.selectbox) + list(at.multiselect) + list(at.number_input) if w.key}
 
 
-def test_nba_is_default_and_renders():
+def test_todays_lab_is_home_and_renders():
+    at = _app(page=None)
+    assert at.selectbox(key="today_stat").value == "Points"
+    titles = [h.value for h in at.subheader]
+    for want in ["🔥 Heating up", "🎯 Consistency corner", "🧩 Matchup history"]:
+        assert want in titles
+    for stat in ["Rebounds", "Assists", "3-pointers made", "Pts + Reb + Ast"]:
+        at.selectbox(key="today_stat").set_value(stat).run()
+        assert not at.exception, (stat, at.exception)
+    assert not any(k.startswith(("nba_", "nfl_", "mlb_")) for k in _keys(at))   # sport pages never ran
+
+
+def test_nba_page_renders():
     at = _app()
     keys = _keys(at)
     assert {"nba_seasons", "nba_player", "nba_stat", "nba_window", "nba_opp", "nba_venue"} <= keys
@@ -88,8 +104,7 @@ def test_mlb_page_without_data_shows_setup_message():
 
 
 def test_about_page():
-    at = _app()
-    at.switch_page("views/about.py").run()
+    at = _app(page="views/about.py")
     assert not at.exception
 
 
@@ -122,5 +137,34 @@ def test_nfl_stat_list_follows_player_position():
 
 
 def test_analytics_skipped_outside_live_site():
-    at = _app()
+    at = _app(page=None)
     assert not any("googletagmanager" in str(getattr(h, "proto", "")) for h in at.get("html"))
+
+
+def test_shared_link_opens_exact_view():
+    seasons = nfl.available_seasons()
+    if not seasons:
+        return
+    df = nfl.load_season(seasons[-1])
+    wr = df[df.position == "WR"].groupby("player_id")["receptions"].sum().idxmax()
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.query_params.update({"sport": "nfl", "player": wr, "stat": "receptions", "seasons": str(seasons[-1]),
+                            "type": "regular", "window": "5", "venue": "home", "line": "5.5"})
+    at.run()
+    at.switch_page("views/nfl.py").run()
+    assert not at.exception, at.exception
+    assert at.selectbox(key="nfl_player").value == wr
+    assert at.selectbox(key="nfl_stat").value == "Receiving · Receptions"
+    assert at.selectbox(key="nfl_window").value == "Last 5"
+    assert at.selectbox(key="nfl_venue").value == "Home"
+    assert at.number_input(key=f"nfl_line_{wr}_receptions").value == 5.5
+
+
+def test_link_for_another_sport_is_ignored():
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.query_params.update({"sport": "nba", "player": "1629029", "stat": "PTS", "window": "5"})
+    at.run()
+    at.switch_page("views/nfl.py").run()
+    assert not at.exception, at.exception
+    if nfl.available_seasons():
+        assert at.selectbox(key="nfl_window").value == "Last 10"      # NBA link didn't touch NFL

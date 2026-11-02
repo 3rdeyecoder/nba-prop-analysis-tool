@@ -68,3 +68,12 @@ def test_meta_merge(tmp_path, monkeypatch):
     storage.update_meta("nfl", seasons={"2025": {"rows": 2}}, last_error=None)
     meta = storage.read_meta("nfl")
     assert set(meta["seasons"]) == {"2024", "2025"}
+
+
+def test_refresh_warning_only_when_data_is_stale():
+    from datetime import datetime, timezone
+    from core.ui import is_stale
+    now = datetime(2026, 11, 2, 12, tzinfo=timezone.utc)
+    assert not is_stale("2026-11-02T06:00:00+00:00", now)    # refreshed 6h ago: fine
+    assert is_stale("2026-10-31T06:00:00+00:00", now)        # 2.25 days ago: warn
+    assert is_stale(None, now)

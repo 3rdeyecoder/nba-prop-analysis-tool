@@ -20,22 +20,23 @@ add_google_analytics()
 # wipe NBA selections while NFL is open. Re-assigning the sport-prefixed keys here (before
 # any page runs) keeps each sport's selections alive and separate.
 for _k in list(st.session_state.keys()):
-    if isinstance(_k, str) and _k.startswith(("nba_", "nfl_", "mlb_")):
+    if isinstance(_k, str) and _k.startswith(("nba_", "nfl_", "mlb_", "today_")):
         st.session_state[_k] = st.session_state[_k]
 
-# The default page (NBA) is served at "/"; NFL and MLB at /nfl and /mlb.
+# Today's Lab is the home page ("/"); sports live at /nba, /nfl and /mlb.
+home = st.Page("views/today.py", title="Today's Lab", icon="🧪", url_path="today", default=True)
 sport_pages = [
-    st.Page("views/nba.py", title="NBA", icon="🏀", url_path="nba", default=True),
+    st.Page("views/nba.py", title="NBA", icon="🏀", url_path="nba"),
     st.Page("views/nfl.py", title="NFL", icon="🏈", url_path="nfl"),
     st.Page("views/mlb.py", title="MLB", icon="⚾", url_path="mlb"),
 ]
 about = st.Page("views/about.py", title="About / How it works", icon="ℹ️", url_path="about")
-nav = st.navigation(sport_pages + [about], position="hidden")
+nav = st.navigation([home] + sport_pages + [about], position="hidden")
 
 st.title(f"{APP_ICON} {APP_NAME}")
 st.caption(APP_SUBTITLE + " · Historical research, not picks.")
 with st.container(horizontal=True, gap="small", key="sport_nav"):
-    for page in sport_pages:
+    for page in [home] + sport_pages:
         st.page_link(page)  # Streamlit adds the page icon
 st.sidebar.page_link(about)
 

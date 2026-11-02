@@ -14,6 +14,7 @@ def stats_for(player_games):
 VIEW = SportView(
     prefix="nfl",
     sport="nfl",
+    url_path="nfl",
     stats=[StatOption(g, label, col) for g, label, col in nfl.STATS],
     season_types=["Regular Season", "Postseason"],
     season_label=lambda s: f"{s} season",

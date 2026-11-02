@@ -20,6 +20,7 @@ import streamlit as st
 from core.config import (AVG_COLOR, LINE_COLOR, OVER_COLOR, PUSH_COLOR, SMALL_SAMPLE,
                          UNDER_COLOR, WINDOW_OPTIONS)
 from core.metrics import OVER, PUSH, UNDER, classify, default_line, fmt, most_recent, summarize
+from core import links
 from core.storage import read_meta
 
 RESULT_COLORS = {OVER: OVER_COLOR, UNDER: UNDER_COLOR, PUSH: PUSH_COLOR}
@@ -49,6 +50,7 @@ class SportView:
     # Optional: (player's games) -> (stat options, default stat col, cols that may carry over
     # from the previous player). Lets NFL show receiving stats for WRs, passing for QBs, etc.
     stats_for: Callable[[pd.DataFrame], tuple[list[StatOption], str, set[str]]] | None = None
+    url_path: str = ""              # page path for share links: nba / nfl / mlb
 
 
 @dataclass
@@ -80,17 +82,48 @@ def _player_label_map(pool: pd.DataFrame) -> dict[str, str]:
     return dict(sorted(labels.items(), key=lambda kv: kv[1].lower()))
 
 
+# ---------------------------------------------------------------- shareable links
+
+def _apply_link(view: SportView, order: list[str]) -> None:
+    """Seed this sport's widgets from URL settings (only when the URL came from outside)."""
+    p = view.prefix
+    qp = links.incoming(p, view.url_path)
+    if not qp:
+        return
+    seasons = [s for s in qp.get("seasons", "").split(",") if s in order]
+    if seasons:
+        st.session_state[f"{p}_seasons"] = seasons
+    stype = next((t for t in view.season_types if links.type_slug(t) == qp.get("type")), None)
+    if stype:
+        st.session_state[f"{p}_stype"] = stype
+    st.session_state[f"{p}_player"] = qp["player"]
+    st.session_state[f"{p}_last_player"] = qp["player"]   # don't treat the link as a player switch
+    if qp.get("window") in links.SLUG_TO_WINDOW:
+        st.session_state[f"{p}_window"] = links.SLUG_TO_WINDOW[qp["window"]]
+    st.session_state[f"{p}_opp"] = qp.get("opp", "All")
+    st.session_state[f"{p}_venue"] = qp.get("venue", "all").capitalize()
+    if qp.get("stat"):
+        st.session_state[f"{p}_url_stat"] = qp["stat"]
+    try:
+        st.session_state[f"{p}_url_line"] = float(qp["line"])
+    except (KeyError, ValueError):
+        pass
+    st.session_state[f"{p}_url_written"] = qp
+
+
 # ---------------------------------------------------------------- main entry
 
 def render_analysis(view: SportView, order: list[str],
                     load: Callable[[tuple[str, ...], str], pd.DataFrame],
                     header: Callable[[Selection], None] | None = None,
-                    extras: Callable[[Selection], None] | None = None) -> Selection | None:
+                    extras: Callable[[Selection], None] | None = None,
+                    url_extra: dict | None = None) -> Selection | None:
     """`order` = stored seasons oldest→newest. `load(seasons, season_type)` reads only those."""
     p = view.prefix
     if not order:
         st.info("No stored seasons yet. See the README for the refresh command.")
         return None
+    _apply_link(view, order)
 
     with st.container(border=True):
         c1, c2 = st.columns([1.6, 1.0])
@@ -129,6 +162,11 @@ def render_analysis(view: SportView, order: list[str],
         # On a player change, keep the stat only if it suits the new player's position
         # (WR -> WR keeps Receptions); otherwise use their main stat (WR -> QB: Passing yards).
         last_player_key = f"{p}_last_player"
+        pending = st.session_state.pop(f"{p}_url_stat", None)
+        if pending:
+            match = next((s.display for s in options if s.col == pending), None)
+            if match:
+                st.session_state[f"{p}_stat"] = match
         current = stat_map.get(st.session_state.get(f"{p}_stat"))
         if st.session_state.get(last_player_key) not in (None, player_id) and (
                 current is None or current.col not in carry):
@@ -150,6 +188,9 @@ def render_analysis(view: SportView, order: list[str],
         venue = c2.selectbox("🏠 Home/Away", venues, key=f"{p}_venue")
 
         line_key = f"{p}_line_{player_id}_{stat.col}"
+        pending_line = st.session_state.pop(f"{p}_url_line", None)
+        if pending_line is not None:
+            st.session_state[line_key] = pending_line
         if line_key not in st.session_state:
             st.session_state[line_key] = default_line(player_games[stat.col])
         line = c3.number_input("🎯 Your line", step=0.5, format="%.1f", key=line_key,
@@ -169,6 +210,10 @@ def render_analysis(view: SportView, order: list[str],
 
     sel = Selection(player_id, player_name, stat, float(line), window_label, seasons, season_type,
                     pool, player_games, filtered, window)
+    params = links.build(sport=view.url_path, player_id=player_id, stat_col=stat.col, seasons=seasons, season_type=season_type,
+                         window_label=window_label, opponent=opponent, venue=venue, line=float(line),
+                         extra=url_extra)
+    links.write(p, params)
 
     if header:
         header(sel)
@@ -188,6 +233,10 @@ def render_analysis(view: SportView, order: list[str],
         game_table(sel, view)
     if extras:
         extras(sel)
+    if view.url_path:
+        with st.expander("🔗 Share this view"):
+            st.caption("Anyone opening this link sees this player, stat, line and filters.")
+            st.code(links.full_url(view.url_path, params), language=None)
     st.caption(f"**Which games count:** {view.participation_note}")
     return sel
 
@@ -332,6 +381,21 @@ def game_table(sel: Selection, view: SportView) -> None:
                        file_name=f"{fname}.csv", mime="text/csv", key=f"dl_{view.prefix}")
 
 
+STALE_AFTER_HOURS = 36
+
+
+def is_stale(last_success_iso: str | None, now: datetime | None = None) -> bool:
+    """True when there's no successful refresh in the last STALE_AFTER_HOURS hours."""
+    if not last_success_iso:
+        return True
+    try:
+        last = datetime.fromisoformat(last_success_iso)
+    except ValueError:
+        return True
+    now = now or datetime.now(timezone.utc)
+    return (now - last).total_seconds() > STALE_AFTER_HOURS * 3600
+
+
 DEFAULT_TZ = "America/New_York"  # used when the browser doesn't report a timezone
 
 
@@ -370,6 +434,6 @@ def data_status(sport: str, df: pd.DataFrame | None, source: str) -> None:
         d = pd.to_datetime(df["game_date"])
         cov = f"{d.min():%b %d, %Y} → {d.max():%b %d, %Y} ({len(df):,} player-games loaded)"
     st.caption(f"🕒 Last successful refresh: {when}  \n📅 Coverage in this view: {cov}  \nSource: {source}")
-    if meta.get("last_error"):
+    if meta.get("last_error") and is_stale(last):
         st.caption(f"⚠️ Most recent refresh attempt failed ({local_time(meta.get('last_attempt_utc'))}); "
                    "showing the last good data.")
