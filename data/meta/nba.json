@@ -1,12 +1,12 @@
 {
-  "last_attempt_utc": "2026-11-02T23:19:34+00:00",
+  "last_attempt_utc": "2026-11-03T13:49:56+00:00",
   "seasons": {
     "2026-27 Regular Season": {
-      "rows": 2079,
+      "rows": 2413,
       "first_game": "2026-10-20",
-      "last_game": "2026-11-01"
+      "last_game": "2026-11-02"
     }
   },
-  "last_success_utc": "2026-11-02T23:19:34+00:00",
+  "last_success_utc": "2026-11-03T13:49:56+00:00",
   "last_error": null
 }

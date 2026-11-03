@@ -1,5 +1,5 @@
 {
-  "last_attempt_utc": "2026-11-02T20:45:35+00:00",
+  "last_attempt_utc": "2026-11-03T13:49:57+00:00",
   "seasons": {
     "2020": {
       "rows": 5990,
@@ -32,11 +32,11 @@
       "last_game": "2026-02-08"
     },
     "2026": {
-      "rows": 2730,
+      "rows": 2750,
       "first_game": "2026-09-09",
-      "last_game": "2026-11-01"
+      "last_game": "2026-11-02"
     }
   },
-  "last_success_utc": "2026-11-02T20:45:35+00:00",
+  "last_success_utc": "2026-11-03T13:49:57+00:00",
   "last_error": null
 }
