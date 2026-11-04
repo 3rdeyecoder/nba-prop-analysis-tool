@@ -107,3 +107,65 @@ NAV_CSS = """
 
 def apply_nav() -> None:
     st.markdown(NAV_CSS, unsafe_allow_html=True)
+
+
+HEADER_CSS = """
+<style>
+/* Dark header bar: ticker, title, subtitle and tabs */
+.st-key-pl_header {
+  background: linear-gradient(120deg, #0b1020 0%, #1e1b4b 55%, #4c1d95 100%);
+  border-radius: 18px; padding: 14px 22px 12px !important; margin-bottom: 14px;
+  box-shadow: 0 8px 28px rgba(30, 27, 75, 0.25);
+}
+.st-key-pl_header h1, .st-key-pl_header h1 * { color: #fff !important; }
+.st-key-pl_header [data-testid="stCaptionContainer"], .st-key-pl_header [data-testid="stCaptionContainer"] * {
+  color: rgba(255, 255, 255, 0.72) !important; }
+.st-key-pl_header .st-key-sport_nav { border-bottom: none; margin-bottom: 0; padding-bottom: 2px; }
+.st-key-pl_header .st-key-sport_nav a[data-testid="stPageLink-NavLink"] {
+  background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.18) !important; }
+.st-key-pl_header .st-key-sport_nav a[data-testid="stPageLink-NavLink"]:hover { background: rgba(255, 255, 255, 0.16); }
+.st-key-pl_header .st-key-sport_nav a[data-testid="stPageLink-NavLink"] p,
+.st-key-pl_header .st-key-sport_nav a[data-testid="stPageLink-NavLink"] span { color: #fff !important; }
+
+/* Results ticker */
+.pl-ticker { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 10px; margin-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12); scrollbar-width: thin; }
+.pl-ticker .tk-label { flex: 0 0 auto; color: #c4b5fd; font-size: 0.66rem !important; font-weight: 800;
+  letter-spacing: 0.08em; line-height: 1.3 !important; align-self: center; padding-right: 4px; }
+.pl-ticker .tk-game { flex: 0 0 auto; min-width: 118px; padding: 6px 10px; border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.10); }
+.pl-ticker .tk-head { color: rgba(255, 255, 255, 0.55); font-size: 0.62rem !important; font-weight: 700;
+  letter-spacing: 0.03em; margin-bottom: 3px; white-space: nowrap; line-height: 1.3 !important; }
+.pl-ticker .tk-row { display: flex; align-items: center; gap: 6px; color: rgba(255, 255, 255, 0.7);
+  font-size: 0.82rem !important; line-height: 1.45 !important; }
+.pl-ticker .tk-row img { width: 18px; height: 18px; padding: 2px; border-radius: 50%; object-fit: contain;
+  background: rgba(255, 255, 255, 0.92); box-sizing: border-box; }   /* light circle keeps dark logos visible */
+.pl-ticker .tk-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255, 255, 255, 0.35);
+  margin: 0 4px; display: inline-block; }
+.pl-ticker .tk-abbr { font-weight: 700; }
+.pl-ticker .tk-pts { margin-left: auto; font-variant-numeric: tabular-nums; }
+.pl-ticker .tk-win { color: #fff; font-weight: 800; }
+@media (max-width: 640px) { .st-key-pl_header { padding: 12px 14px 10px !important; } }
+</style>
+"""
+
+
+def apply_header() -> None:
+    st.markdown(HEADER_CSS, unsafe_allow_html=True)
+
+
+def highlight_tab(url_path: str) -> None:
+    """Mark the open page's tab (Streamlit doesn't expose an 'active' marker for page links).
+    Links are matched by how their address ENDS, since Streamlit Cloud writes them with a prefix;
+    the home tab (Today's Lab) is always first, so it's matched by position."""
+    link = 'a[data-testid="stPageLink-NavLink"]'
+    if url_path in ("", "today"):
+        sel = f'.st-key-sport_nav [data-testid="stElementContainer"]:first-child {link}'
+    else:
+        sel = f'.st-key-sport_nav {link}[href$="{url_path}"]'
+    if url_path == "callit":
+        css = f"{sel} {{ outline: 2px solid #fff; outline-offset: 2px; }}"
+    else:
+        css = (f"{sel} {{ background: #fff !important; border-color: #fff !important; }} "
+               f"{sel} p, {sel} span {{ color: #1e1b4b !important; }}")
+    st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)

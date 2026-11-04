@@ -11,6 +11,13 @@ probability for the next game. There are no odds, sportsbook integrations or bet
 
 ## Features
 
+**Header and layout**: every page opens with a dark header holding a **Latest results** ticker
+(recent final scores: NBA from the stored game logs, NFL and MLB from the schedules saved by
+`refresh.nfl` / `refresh.mlb`). Each sport's tab shows only that league; Today's Lab and Call It mix
+the leagues played in the last 10 days,
+the title and the tabs, with the open tab highlighted. The sidebar starts closed (open it with »
+for page options); "About" is linked in the footer.
+
 **Today's Lab (home page)**: starting points from recent NBA games, each linking straight into
 the full analysis with the right player, stat and filters selected:
 - *Heating up*: last 5 games (all this season) vs the 30 before them, with minutes before/after.

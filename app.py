@@ -7,13 +7,14 @@ MLB data.
 """
 import streamlit as st
 
-from core import style
+from core import style, ticker
 from core.analytics import add_google_analytics
 from core.config import APP_ICON, APP_NAME, APP_SUBTITLE
 
-st.set_page_config(page_title=APP_NAME, page_icon=APP_ICON, layout="wide", initial_sidebar_state="auto")
+st.set_page_config(page_title=APP_NAME, page_icon=APP_ICON, layout="wide", initial_sidebar_state="collapsed")
 style.apply()
 style.apply_nav()
+style.apply_header()
 add_google_analytics()
 
 # Streamlit deletes a widget's state when the widget isn't drawn on a rerun, which would
@@ -34,16 +35,20 @@ sport_pages = [
 about = st.Page("views/about.py", title="About / How it works", icon="ℹ️", url_path="about")
 nav = st.navigation([home] + sport_pages + [call_it, about], position="hidden")
 
-st.title(f"{APP_ICON} {APP_NAME}")
-st.caption(APP_SUBTITLE + " · Historical research, not picks.")
-with st.container(horizontal=True, gap="small", key="sport_nav"):
-    for page in [home] + sport_pages + [call_it]:
-        st.page_link(page)  # Streamlit adds the page icon
+with st.container(key="pl_header"):
+    ticker.render({"nba": "NBA", "nfl": "NFL", "mlb": "MLB"}.get(nav.url_path))
+    st.title(f"{APP_ICON} {APP_NAME}")
+    st.caption(APP_SUBTITLE + " · Historical research, not picks.")
+    with st.container(horizontal=True, gap="small", key="sport_nav"):
+        for page in [home] + sport_pages + [call_it]:
+            st.page_link(page)  # Streamlit adds the page icon
+style.highlight_tab(nav.url_path)
 st.sidebar.page_link(about)
 
 nav.run()
 
 st.markdown("---")
+st.page_link(about, label="About Playmaker Lab / How it works")
 st.caption("Playmaker Lab is a sports research tool: it shows past results, not predictions or picks. "
            "If you choose to bet, you must be 21+ (age limits vary by state). "
            "Gambling problem? Call or text **1-800-GAMBLER**.")

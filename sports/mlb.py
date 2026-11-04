@@ -55,6 +55,19 @@ PITCHER_STATS = [
 ]
 
 
+# MLB team ids (stable), used for logos: https://www.mlbstatic.com/team-logos/<id>.svg
+TEAM_IDS = {"ARI": 109, "AZ": 109, "ATL": 144, "BAL": 110, "BOS": 111, "CHC": 112, "CWS": 145, "CHW": 145,
+            "CIN": 113, "CLE": 114, "COL": 115, "DET": 116, "HOU": 117, "KC": 118, "LAA": 108, "LAD": 119,
+            "MIA": 146, "MIL": 158, "MIN": 142, "NYM": 121, "NYY": 147, "ATH": 133, "OAK": 133, "PHI": 143,
+            "PIT": 134, "SD": 135, "SF": 137, "SEA": 136, "STL": 138, "TB": 139, "TEX": 140, "TOR": 141,
+            "WSH": 120, "WAS": 120}
+LOGO = "https://www.mlbstatic.com/team-logos/{}.svg"
+
+
+def schedule_path(season: int) -> Path:
+    return MLB_DIR / f"schedule_{season}.parquet"
+
+
 def path_for(kind: str, season: int) -> Path:
     return MLB_DIR / f"{kind}_{season}.parquet"
 
@@ -85,6 +98,10 @@ def parse_schedule(schedule: dict) -> pd.DataFrame:
                 "game_type": gt,
                 "final": is_final(g),
                 "home_abbr": _abbr(teams.get("home", {}).get("team", {})),
+                "home_score": teams.get("home", {}).get("score"),
+                "home_id": teams.get("home", {}).get("team", {}).get("id"),
+                "away_id": teams.get("away", {}).get("team", {}).get("id"),
+                "away_score": teams.get("away", {}).get("score"),
                 "away_abbr": _abbr(teams.get("away", {}).get("team", {})),
             })
     df = pd.DataFrame(rows)
@@ -92,6 +109,7 @@ def parse_schedule(schedule: dict) -> pd.DataFrame:
         return df
     # A suspended game can be listed on its start date and its resume date. Date it by
     # the earliest official date; keep it only if some listing shows it as Final.
+    df = df.sort_values(["game_pk", "listing_date"])        # last listing = the completed game's score
     agg = df.groupby("game_pk").agg(
         game_date=("official_date", "min"),
         resumed_date=("listing_date", "max"),
@@ -100,6 +118,10 @@ def parse_schedule(schedule: dict) -> pd.DataFrame:
         double_header=("double_header", "first"),
         game_type=("game_type", "first"),
         home_abbr=("home_abbr", "first"),
+        home_score=("home_score", "last"),
+        home_id=("home_id", "first"),
+        away_id=("away_id", "first"),
+        away_score=("away_score", "last"),
         away_abbr=("away_abbr", "first"),
     ).reset_index()
     agg.loc[agg["resumed_date"] == agg["game_date"], "resumed_date"] = None

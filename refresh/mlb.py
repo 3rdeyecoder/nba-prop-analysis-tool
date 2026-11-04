@@ -51,6 +51,9 @@ def refresh_season(session, season: int, recent_days: int, delay: float, max_gam
     if games.empty:
         log.info("%s: no completed games yet (season hasn't started); nothing to do", season)
         return {}
+    # final scores for the results ticker (small file, rewritten each run)
+    atomic_write_parquet(games[["game_pk", "game_date", "game_number", "game_type", "away_abbr", "home_abbr",
+                                "away_score", "home_score", "away_id", "home_id"]], mlb.schedule_path(season))
 
     old_hit, old_pit = _read("hitting", season), _read("pitching", season)
     stored = set(old_hit.get("game_id", pd.Series(dtype=str))) | set(old_pit.get("game_id", pd.Series(dtype=str)))

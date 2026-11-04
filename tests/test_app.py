@@ -196,3 +196,17 @@ def test_call_it_events_not_sent_outside_live_site():
     for i in range(5):
         [b for b in at.button if b.key and b.key.endswith(f"_{i}_over")][0].click().run()
     assert not any("callit_complete" in str(getattr(h, "proto", "")) for h in at.get("html"))
+
+
+def test_header_ticker_and_featured_section():
+    from core import ticker
+    games = ticker.latest_games()
+    for g in games:
+        assert g["league"] in ("NBA", "NFL", "MLB") and g["away"] != g["home"]
+        assert isinstance(g["away_pts"], int) and isinstance(g["home_pts"], int)
+    at = _app(page=None)
+    md = " ".join(m.value for m in at.markdown)
+    if games:
+        assert 'class="pl-ticker"' in md
+    assert "Call It #" in md                                   # promo box
+    assert "Quick hits" in md

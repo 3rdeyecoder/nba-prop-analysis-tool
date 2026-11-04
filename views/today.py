@@ -1,6 +1,7 @@
 """Today's Lab: starting points built from the stored NBA data. Every card links into the
 NBA page with the right player, stat and filters already selected."""
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -9,7 +10,7 @@ from core import cards as card_ui
 from core import links, unavailable
 from core.storage import read_meta
 from core.ui import local_time, viewer_timezone
-from sports import insights, nba
+from sports import callit, insights, nba
 
 STATS = {"Points": "PTS", "Rebounds": "REB", "Assists": "AST", "3-pointers made": "FG3M",
          "Pts + Reb + Ast": "PRA"}
@@ -146,6 +147,97 @@ def matchup_card(i, r):
                 f"vs {r['opponent']}: {_range(r['first'], r['last'])}<br>Overall: {r['overall_n']} games",
                 _link(r, "All games", opponent=r["opponent"]), team_line=team_line)
 
+
+# ---------------------------------------------------------------- featured + sidebar (ESPN-style top)
+HERO_CSS = """
+<style>
+.st-key-hero_card { padding: 0 !important; overflow: hidden; }
+.st-key-hero_card [data-testid="stPageLink"] { padding: 0 20px 14px; }
+.hero-img { position: relative; height: 250px; display: flex; align-items: flex-end; justify-content: center;
+  background: radial-gradient(120% 90% at 50% 100%, #6d28d9 0%, #1e1b4b 60%, #0b1020 100%); }
+.hero-img .hero-shot { height: 236px; width: auto; display: block; }
+.hero-img .hero-logo { position: absolute; top: 14px; right: 16px; width: 54px; height: 54px; }
+.hero-img .hero-kicker { position: absolute; top: 14px; left: 16px; padding: 3px 10px; border-radius: 999px;
+  background: rgba(255,255,255,0.14); color: #fff; font-size: 0.72rem !important; font-weight: 800; letter-spacing: 0.06em; }
+.hero-body { padding: 14px 20px 6px; }
+.hero-body .hero-title { font-size: 1.55rem !important; font-weight: 800; line-height: 1.2 !important; letter-spacing: -0.01em; }
+.hero-body .hero-sub { font-size: 0.95rem !important; opacity: 0.8; margin-top: 6px; }
+.hero-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.hero-chips span { padding: 3px 10px; border-radius: 999px; font-size: 0.8rem !important; font-weight: 700;
+  background: rgba(107,138,253,0.14); }
+.hero-chips span.up { color: #1f9d5c; background: rgba(47,191,113,0.15); }
+.st-key-quick_hits [data-testid="stPageLink"] a { padding: 6px 0 !important; border-bottom: 1px solid rgba(128,128,128,0.18); border-radius: 0; }
+.st-key-quick_hits [data-testid="stPageLink"] p { font-size: 0.92rem !important; font-weight: 600; }
+.st-key-quick_hits [data-testid="stPageLink"] * { white-space: normal !important; overflow: visible !important;
+  text-overflow: clip !important; }
+.st-key-callit_promo { background: linear-gradient(135deg, #7c3aed 0%, #db2777 100%); border-radius: 16px;
+  padding: 16px 18px !important; box-shadow: 0 6px 20px rgba(124,58,237,0.25); }
+.st-key-callit_promo, .st-key-callit_promo * { color: #fff !important; }
+.st-key-callit_promo .promo-title { font-size: 1.25rem !important; font-weight: 800; line-height: 1.2 !important; }
+.st-key-callit_promo .promo-text { font-size: 0.9rem !important; opacity: 0.92; margin-top: 4px; }
+.st-key-callit_promo [data-testid="stPageLink"] a { background: #fff; border-radius: 10px; justify-content: center; margin-top: 6px; }
+.st-key-callit_promo [data-testid="stPageLink"] a p { color: #6d28d9 !important; font-weight: 800; }
+</style>
+"""
+st.markdown(HERO_CSS, unsafe_allow_html=True)
+
+
+def hero(r: pd.Series) -> None:
+    """The featured finding: big photo, headline, key numbers."""
+    big_shot = f"https://cdn.nba.com/headshots/nba/latest/1040x760/{r['player_id']}.png"
+    logo = card_ui.logo_img(r.get("team_id") if pd.notna(r.get("team_id")) else None, cls="hero-logo")
+    with st.container(border=True, key="hero_card"):
+        st.markdown(
+            f'<div class="hero-img"><span class="hero-kicker">🔥 FEATURED · HEATING UP</span>'
+            f'<img class="hero-shot" src="{big_shot}" alt="">{logo}</div>'
+            f'<div class="hero-body"><div class="hero-title">{r["player_name"]} is up {r["change"]:.1f} {unit} '
+            f'a game over the last {r["recent_n"]}</div>'
+            f'<div class="hero-sub">{r["team"]} · {r["recent_avg"]:.1f} {unit} in the last {r["recent_n"]} games, '
+            f'up from {r["baseline_avg"]:.1f} before</div>'
+            f'<div class="hero-chips"><span class="up">{_arrow(r["change"])} vs before</span>'
+            f'<span>Minutes {r["recent_min"]:.0f} vs {r["baseline_min"]:.0f}</span>'
+            f'<span>{_range(r["recent_first"], r["recent_last"])}</span></div></div>',
+            unsafe_allow_html=True)
+        st.page_link("views/nba.py", label="Open the full analysis →", query_params=_link(r, "Last 5"))
+
+
+def quick_hits() -> None:
+    with st.container(border=True, key="quick_hits"):
+        st.markdown("**⚡ Quick hits**")
+        hits = []
+        for _, r in cards["heat"].iloc[1:3].iterrows():
+            hits.append((f"🔥 {r['player_name']}: {r['recent_avg']:.1f} {unit}, last {r['recent_n']} ({_arrow(r['change'])})",
+                         _link(r, "Last 5")))
+        for _, r in cards["steady"].head(2).iterrows():
+            hits.append((f"🎯 {r['player_name']}: {r['avg']:.1f} {unit} ± {r['std']:.1f}, last {r['n']}", _link(r, "Last 10")))
+        for _, r in cards["matchup"].head(2).iterrows():
+            hits.append((f"🧩 {r['player_name']} vs {r['opponent']}: {r['opp_avg']:.1f} {unit} ({_arrow(r['change'])})",
+                         _link(r, "All games", opponent=r["opponent"])))
+        if not hits:
+            st.caption("No quick hits yet. Check back after a few more games.")
+        for label_, params in hits:
+            st.page_link("views/nba.py", label=label_, query_params=params)
+
+
+def callit_promo() -> None:
+    n = callit.puzzle_number(datetime.now(ZoneInfo("America/New_York")).date())
+    with st.container(key="callit_promo"):
+        st.markdown(f'<div class="promo-title">🎯 Call It #{n} is live</div>'
+                    '<div class="promo-text">5 real games. Over or under? Play today\'s puzzle and share your score.</div>',
+                    unsafe_allow_html=True)
+        st.page_link("views/callit.py", label="Play now →", width="stretch")
+
+
+main_col, side_col = st.columns([2.1, 1], gap="medium")
+with main_col:
+    feature = cards["heat"]
+    if not feature.empty:
+        hero(feature.iloc[0])
+    else:
+        st.info("The featured finding appears once there are enough games this season.")
+with side_col:
+    callit_promo()
+    quick_hits()
 
 section("🔥 Heating up",
         "Biggest increase: average of the last 5 games (all this season) vs the 30 games before them. "

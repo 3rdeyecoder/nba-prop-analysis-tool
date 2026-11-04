@@ -241,3 +241,19 @@ def test_trick_play_adds_the_group_the_player_actually_recorded():
 def test_show_all_returns_every_stat():
     picked, default, _core = nfl.stats_for_player(_pg("TE"), show_all=True)
     assert picked == nfl.STATS and default == "receiving_yards"
+
+
+def test_mlb_schedule_keeps_final_scores_from_the_completed_listing():
+    sched = {"dates": [
+        {"date": "2025-07-04", "games": [
+            {"gamePk": 3, "gameType": "R", "officialDate": "2025-07-04", "gameNumber": 1,
+             "status": {"detailedState": "Suspended: Rain"},
+             "teams": {"home": {**_team("LAD", 119), "score": 2}, "away": {**_team("SD", 135), "score": 1}}}]},
+        {"date": "2025-07-05", "games": [
+            {"gamePk": 3, "gameType": "R", "officialDate": "2025-07-04", "gameNumber": 1,
+             "status": {"detailedState": "Final"},
+             "teams": {"home": {**_team("LAD", 119), "score": 5}, "away": {**_team("SD", 135), "score": 4}}}]},
+    ]}
+    g = mlb.parse_schedule(sched).set_index("game_pk")
+    assert (g.loc[3, "home_score"], g.loc[3, "away_score"]) == (5, 4)    # final score, not the suspended one
+    assert (g.loc[3, "home_id"], g.loc[3, "away_id"]) == (119, 135)       # team ids for logos

@@ -30,6 +30,11 @@ def main(argv: list[str] | None = None) -> int:
     log = setup_logging()
 
     ok, failed, cov = [], {}, {}
+    try:   # team logos for the results ticker (small; refreshed each run)
+        teams = with_retries(nflreadpy.load_teams, label="teams").to_pandas()
+        atomic_write_parquet(teams[["team_abbr", "team_logo_espn"]], nfl.TEAMS_PATH)
+    except Exception as e:  # noqa: BLE001 - logos are optional
+        log.warning("team logos not updated: %s", str(e)[:200])
     for season in args.seasons:
         key = str(season)
         try:
@@ -43,6 +48,7 @@ def main(argv: list[str] | None = None) -> int:
             require_columns(df, ["player_id", "game_id", "game_date"], f"normalized {season}")
             unmatched = stats["game_id"].notna().sum() - df["game_id"].notna().sum()
             atomic_write_parquet(df, nfl.season_path(season))
+            atomic_write_parquet(sched[[c for c in nfl.SCHEDULE_STORE if c in sched]], nfl.schedule_path(season))
             cov[key] = coverage(df)
             ok.append(key)
             log.info("%s: saved %s player-games (weeks %s-%s, %s rows dropped as non-offense or unmatched)",

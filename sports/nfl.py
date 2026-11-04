@@ -65,6 +65,25 @@ def season_path(season: int) -> Path:
     return NFL_DIR / f"player_week_{season}.parquet"
 
 
+TEAMS_PATH = NFL_DIR / "teams.parquet"
+# Fallback logo rule (nflverse/ESPN style) for when teams.parquet hasn't been saved yet
+_LOGO_SLUG = {"LA": "lar", "WAS": "wsh"}
+
+
+def logo_url(abbr: str, saved: dict[str, str] | None = None) -> str:
+    if saved and abbr in saved:
+        return saved[abbr]
+    return f"https://a.espncdn.com/i/teamlogos/nfl/500/{_LOGO_SLUG.get(abbr, abbr.lower())}.png"
+
+
+def schedule_path(season: int) -> Path:
+    return NFL_DIR / f"schedule_{season}.parquet"
+
+
+SCHEDULE_STORE = ["game_id", "season", "week", "game_type", "gameday", "away_team", "home_team",
+                  "away_score", "home_score"]
+
+
 def available_seasons() -> list[int]:
     return sorted(int(p.stem.rsplit("_", 1)[1]) for p in NFL_DIR.glob("player_week_*.parquet"))
 
