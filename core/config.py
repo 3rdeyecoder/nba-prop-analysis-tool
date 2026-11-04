@@ -27,4 +27,4 @@ GA_MEASUREMENT_ID = "G-SJRKLF63C6"
 
 # Public address of the deployed app, used for "Share this view" links.
 # Update this if you change your Streamlit subdomain.
-APP_URL = "https://nbabetting.streamlit.app"
+APP_URL = "https://playmakerlab.streamlit.app"
