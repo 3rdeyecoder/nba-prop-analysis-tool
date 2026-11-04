@@ -183,3 +183,16 @@ def test_call_it_full_game():
                for m in at.markdown) == 5                                       # 5 recap cards
     share = at.code[0].value
     assert share.startswith("Playmaker Lab · Call It #") and len(share.splitlines()[1]) == 5
+
+
+def test_responsible_gambling_footer_on_every_page():
+    for page in [None, "views/nba.py", "views/nfl.py", "views/mlb.py", "views/callit.py", "views/about.py"]:
+        at = _app(page=page)
+        assert any("1-800-GAMBLER" in c.value for c in at.caption), page
+
+
+def test_call_it_events_not_sent_outside_live_site():
+    at = _app(page="views/callit.py")
+    for i in range(5):
+        [b for b in at.button if b.key and b.key.endswith(f"_{i}_over")][0].click().run()
+    assert not any("callit_complete" in str(getattr(h, "proto", "")) for h in at.get("html"))

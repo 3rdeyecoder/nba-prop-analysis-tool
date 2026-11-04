@@ -42,3 +42,34 @@ def add_google_analytics() -> None:
     if not GA_MEASUREMENT_ID or _is_local():
         return
     st.html(_TAG.replace("__ID__", GA_MEASUREMENT_ID), unsafe_allow_javascript=True)
+
+
+_EVENT = """
+<script>
+(function () {
+  var key = __KEY__;
+  try {                                   // send once per browser tab, even if the page reruns or reloads
+    if (sessionStorage.getItem(key)) return;
+    sessionStorage.setItem(key, "1");
+  } catch (e) {
+    if (window[key]) return;
+    window[key] = true;
+  }
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = window.gtag || function () { window.dataLayer.push(arguments); };
+  window.gtag("event", __NAME__, __PARAMS__);
+})();
+</script>
+"""
+
+
+def track_event(name: str, params: dict, once_key: str) -> None:
+    """Send a Google Analytics event (e.g. a finished Call It puzzle). Skipped locally."""
+    import json
+
+    if not GA_MEASUREMENT_ID or _is_local():
+        return
+    html = (_EVENT.replace("__KEY__", json.dumps(f"pl_ev_{once_key}"))
+                  .replace("__NAME__", json.dumps(name))
+                  .replace("__PARAMS__", json.dumps(params)))
+    st.html(html, unsafe_allow_javascript=True)

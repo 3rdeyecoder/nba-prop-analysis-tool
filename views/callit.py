@@ -8,6 +8,7 @@ import streamlit as st
 
 from core import cards as card_ui
 from core import links
+from core.analytics import track_event
 from core.config import APP_URL, LINE_COLOR, OVER_COLOR, UNDER_COLOR
 from core.ui import show_chart
 from sports import callit, nba
@@ -183,8 +184,13 @@ for i, r in enumerate([] if finished else rounds):
             st.rerun()
     break
 
+if picks and not finished:
+    track_event("callit_start", {"puzzle_number": number}, once_key=f"callit_start_{number}")
+
 if finished:
     score = sum(results)
+    track_event("callit_complete", {"puzzle_number": number, "score": score, "perfect": score == len(rounds)},
+                once_key=f"callit_complete_{number}")
     grid = "".join("🟩" if ok else "🟥" for ok in results)
     st.markdown(f'<div class="ci-banner ci-score"><div class="ci-num">{score}<span>/{len(rounds)}</span></div>'
                 f'<div class="ci-rank">{SCORE_TITLES.get(score, "")}</div><div class="ci-grid">{grid}</div></div>',

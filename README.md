@@ -222,6 +222,16 @@ Google Analytics 4 is added in `core/analytics.py` with the measurement ID in `c
 when running on localhost, and counts NBA/NFL/MLB switches as page views through GA4's
 "page changes based on browser history events" setting. Ad blockers will hide some visits.
 
+Call It also sends two custom events: `callit_start` (first pick) and `callit_complete`
+(with `puzzle_number`, `score` and `perfect`). Each is sent once per browser tab, so reloads
+don't double count. To see score breakdowns in reports, register `score` and `puzzle_number` as
+custom dimensions in GA4 (Admin → Custom definitions).
+
+## Responsible use
+
+Every page ends with a note that the app shows past results, not picks, with the 21+ reminder and
+1-800-GAMBLER. The About page has a short "Play responsibly" section.
+
 ## Data sources and terms
 
 - **NBA**: stats.nba.com via [`nba_api`](https://github.com/swar/nba_api). Unofficial endpoints;

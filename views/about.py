@@ -46,6 +46,16 @@ st.markdown(
 </div>
 
 <div class="card">
+  <h3 style="margin:0;">Play responsibly</h3>
+  <p class="muted" style="margin:0.5rem 0 0;">
+    Playmaker Lab is for research and fun. It doesn't take bets, show odds, or tell you what to bet.
+    If you bet, only do so where it's legal and you meet the age limit (21+ in most US states), and
+    never bet more than you can afford to lose. If gambling stops being fun, call or text
+    <b>1-800-GAMBLER</b> for free, confidential help.
+  </p>
+</div>
+
+<div class="card">
   <h3 style="margin:0;">Data sources</h3>
   <ul class="muted" style="margin:0.5rem 0 0;">
     <li><b>NBA</b>: stats.nba.com player game logs via <code>nba_api</code>.</li>

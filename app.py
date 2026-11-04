@@ -42,3 +42,8 @@ with st.container(horizontal=True, gap="small", key="sport_nav"):
 st.sidebar.page_link(about)
 
 nav.run()
+
+st.markdown("---")
+st.caption("Playmaker Lab is a sports research tool: it shows past results, not predictions or picks. "
+           "If you choose to bet, you must be 21+ (age limits vary by state). "
+           "Gambling problem? Call or text **1-800-GAMBLER**.")
