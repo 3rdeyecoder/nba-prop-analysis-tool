@@ -145,6 +145,17 @@ HEADER_CSS = """
 .pl-ticker .tk-abbr { font-weight: 700; }
 .pl-ticker .tk-pts { margin-left: auto; font-variant-numeric: tabular-nums; }
 .pl-ticker .tk-win { color: #fff; font-weight: 800; }
+/* upcoming games: purple accent so they read differently from finals */
+.pl-ticker .tk-label-up { color: #f0abfc; }
+.pl-ticker .tk-label + .tk-game { margin-left: 0; }
+.pl-ticker .tk-up { background: rgba(167, 139, 250, 0.16); border-color: rgba(196, 181, 253, 0.35); }
+.pl-ticker .tk-up .tk-head { color: #e9d5ff; }
+.pl-ticker .tk-up .tk-row { color: #fff; }
+.pl-ticker .tk-rec { margin-left: auto; color: rgba(255, 255, 255, 0.55); font-size: 0.72rem !important;
+  font-variant-numeric: tabular-nums; }
+.pl-ticker .tk-tv { margin-top: 2px; color: rgba(255, 255, 255, 0.6); font-size: 0.62rem !important; font-weight: 700;
+  letter-spacing: 0.03em; white-space: nowrap; }
+.pl-ticker .tk-label:not(:first-child) { margin-left: 8px; padding-left: 12px; border-left: 1px solid rgba(255, 255, 255, 0.18); }
 @media (max-width: 640px) { .st-key-pl_header { padding: 12px 14px 10px !important; } }
 </style>
 """

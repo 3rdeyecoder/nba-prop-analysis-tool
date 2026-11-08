@@ -19,7 +19,7 @@ from datetime import date
 
 import pandas as pd
 
-from core.storage import atomic_write_csv_gz, coverage, require_columns, with_retries
+from core.storage import atomic_write_csv_gz, atomic_write_parquet, coverage, require_columns, with_retries
 from refresh.common import record_result, setup_logging
 from sports import nba
 
@@ -47,6 +47,12 @@ def fetch(season: str, api_type: str, proxy: str | None) -> pd.DataFrame:
         player_or_team_abbreviation="P", season=season, season_type_all_star=api_type,
         timeout=60, proxy=proxy,
     ).get_data_frames()[0]
+
+
+def fetch_schedule(season: str, proxy: str | None) -> pd.DataFrame:
+    from nba_api.stats.endpoints import scheduleleaguev2
+
+    return scheduleleaguev2.ScheduleLeagueV2(season=season, timeout=60, proxy=proxy).season_games.get_data_frame()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,6 +84,20 @@ def main(argv: list[str] | None = None) -> int:
                 msg = str(e).replace(proxy, "***") if proxy else str(e)
                 failed[key] = f"{type(e).__name__}: {msg[:300]}"
             time.sleep(1.5)  # be polite to stats.nba.com
+    # Season schedule (upcoming games, start times, records, national TV) for the "today" ticker
+    for season in args.seasons:
+        key = f"{season} schedule"
+        try:
+            raw = with_retries(lambda: fetch_schedule(season, proxy), attempts=3, base_delay=5, label=key)
+            sched = nba.normalize_schedule(raw)
+            if sched.empty:
+                raise ValueError("schedule came back empty")
+            atomic_write_parquet(sched, nba.schedule_path(season))
+            ok.append(key)
+            log.info("%s: saved %d games", key, len(sched))
+        except Exception as e:  # noqa: BLE001
+            msg = str(e).replace(proxy, "***") if proxy else str(e)
+            failed[key] = f"{type(e).__name__}: {msg[:300]}"
     return record_result("nba", ok, failed, cov)
 
 

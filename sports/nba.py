@@ -98,3 +98,53 @@ def normalize(raw: pd.DataFrame, season: str, season_type: str) -> pd.DataFrame:
 
 def load_file(path: Path, season: str, season_type: str) -> pd.DataFrame:
     return normalize(pd.read_csv(path), season, season_type)
+
+
+
+# ---------------------------------------------------------------- schedule (upcoming games)
+
+def schedule_path(season: str) -> Path:
+    return DATA_DIR / f"nba_schedule_{season}.parquet"
+
+
+SCHEDULE_NEED = ["gameId", "gameDateTimeUTC", "awayTeam_teamTricode", "homeTeam_teamTricode",
+                 "awayTeam_teamId", "homeTeam_teamId"]
+
+
+def _record(raw: pd.DataFrame, side: str) -> pd.Series:
+    w, l = raw.get(f"{side}Team_wins"), raw.get(f"{side}Team_losses")
+    if w is None or l is None:
+        return pd.Series([None] * len(raw), index=raw.index)
+    ok = w.notna() & l.notna()
+    return (w.fillna(0).astype(int).astype(str) + "-" + l.fillna(0).astype(int).astype(str)).where(ok)
+
+
+def _national_tv(raw: pd.DataFrame) -> pd.Series:
+    """National TV names. nba_api numbers the columns when a game has several (…_0_…, …_1_…)."""
+    cols = [c for c in raw.columns if re.fullmatch(r"nationalBroadcasters(_\d+)?_broadcasterDisplay", c)]
+    if not cols:
+        return pd.Series([None] * len(raw), index=raw.index)
+    def join(row):
+        names = [str(v) for v in row if isinstance(v, str) and v.strip()]
+        return " / ".join(dict.fromkeys(names)) or None
+    return raw[cols].apply(join, axis=1)
+
+
+def normalize_schedule(raw: pd.DataFrame) -> pd.DataFrame:
+    """ScheduleLeagueV2 'SeasonGames' -> one row per game with a UTC start time."""
+    missing = [c for c in SCHEDULE_NEED if c not in raw.columns]
+    if missing:
+        raise ValueError(f"NBA schedule schema changed; missing {missing}")
+    df = pd.DataFrame({
+        "game_id": raw["gameId"].astype(str).str.zfill(10),
+        "start_utc": pd.to_datetime(raw["gameDateTimeUTC"], utc=True, errors="coerce"),
+        "away": raw["awayTeam_teamTricode"], "home": raw["homeTeam_teamTricode"],
+        "away_id": pd.to_numeric(raw["awayTeam_teamId"], errors="coerce"),
+        "home_id": pd.to_numeric(raw["homeTeam_teamId"], errors="coerce"),
+        "away_record": _record(raw, "away"), "home_record": _record(raw, "home"),
+        "arena": raw.get("arenaName"), "status": pd.to_numeric(raw.get("gameStatus"), errors="coerce"),
+        "label": raw.get("gameLabel"), "tv": _national_tv(raw),
+    })
+    # placeholder playoff games have no teams yet
+    real = df["away"].fillna("").str.len().gt(0) & df["home"].fillna("").str.len().gt(0) & df["start_utc"].notna()
+    return df[real].drop_duplicates("game_id").sort_values("start_utc").reset_index(drop=True)

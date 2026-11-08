@@ -13,7 +13,10 @@ probability for the next game. There are no odds, sportsbook integrations or bet
 
 **Header and layout**: every page opens with a dark header holding a **Latest results** ticker
 (recent final scores: NBA from the stored game logs, NFL and MLB from the schedules saved by
-`refresh.nfl` / `refresh.mlb`). Each sport's tab shows only that league; Today's Lab and Call It mix
+`refresh.nfl` / `refresh.mlb`). Before the results, the ticker shows **today's games** (or a league's next game day when it has
+none today) with start times in the visitor's timezone, team records and national TV. These come from
+the NBA schedule saved by `refresh.nba` (`data/nba_schedule_<season>.parquet`) and the NFL schedule
+saved by `refresh.nfl`. Each sport's tab shows only that league; Today's Lab and Call It mix
 the leagues played in the last 10 days,
 the title and the tabs, with the open tab highlighted. The sidebar starts closed (open it with »
 for page options); "About" is linked in the footer.

@@ -80,8 +80,8 @@ def schedule_path(season: int) -> Path:
     return NFL_DIR / f"schedule_{season}.parquet"
 
 
-SCHEDULE_STORE = ["game_id", "season", "week", "game_type", "gameday", "away_team", "home_team",
-                  "away_score", "home_score"]
+SCHEDULE_STORE = ["game_id", "season", "week", "game_type", "gameday", "gametime", "weekday", "stadium",
+                  "away_team", "home_team", "away_score", "home_score"]
 
 
 def available_seasons() -> list[int]:
