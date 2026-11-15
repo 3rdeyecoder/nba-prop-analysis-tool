@@ -89,9 +89,9 @@ def test_page_with_and_without_a_snapshot(setup, tmp_path, monkeypatch):
     nba_live.save_snapshot(state.reset_index(drop=True), tg)
     at.run()
     assert not at.exception, at.exception
-    assert at.selectbox(key="uw_a").options and at.selectbox(key="uw_b").options
-    at.selectbox(key="uw_a").set_value("OKC").run()
-    at.selectbox(key="uw_b").set_value("WAS").run()
+    assert at.selectbox(key="uw_a_NBA").options and at.selectbox(key="uw_b_NBA").options
+    at.selectbox(key="uw_a_NBA").set_value("OKC").run()
+    at.selectbox(key="uw_b_NBA").set_value("WAS").run()
     assert not at.exception, at.exception
     md = " ".join(x.value for x in at.markdown)
     assert "uw-bar" in md and "Why the model leans this way" in md
@@ -117,6 +117,8 @@ def test_cards_show_both_kinds_of_flags(setup, tmp_path, monkeypatch):
                      "paper_prob": chk.paper_prob, "model_prob": chk.model_prob, "home_model_prob": home_model,
                      "home_paper_prob": home_paper, "edge": chk.edge, "flagged": chk.flagged})
     track.append(rows, track.log_path("NBA"))
+    slate = pd.DataFrame(rows)[["game_id", "home", "away", "start_utc"]]
+    monkeypatch.setattr(nba_live, "todays_games", lambda day, schedule=None: slate.copy())
     at = AppTest.from_file(APP, default_timeout=120)
     at.run()
     at.switch_page("views/upsets.py").run()

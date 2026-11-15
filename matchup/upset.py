@@ -12,6 +12,8 @@ from dataclasses import dataclass
 DEFAULT_THRESHOLD = 0.05      # 5 percentage points above the on-paper chance (adjustable)
 PRIOR_GAMES = 10              # early-season blend: every team starts as if 5-5
 NBA_HOME_WIN_RATE = 0.553     # home teams won 55.3% of 6,140 NBA games, 2021-22 to 2025-26
+NFL_HOME_WIN_RATE = 0.546     # home teams won 54.6% of 2,846 NFL regular-season games, 2015-2025 (ties as half)
+NFL_PRIOR_GAMES = 4           # 17-game seasons: every NFL team starts as if 2-2
 
 
 def win_pct(wins: int, losses: int, prior_games: int = PRIOR_GAMES) -> float:
@@ -26,9 +28,9 @@ def log5(p_a: float, p_b: float) -> float:
 
 
 def on_paper(record_a: tuple[int, int], record_b: tuple[int, int], home: str | None,
-             home_win_rate: float = NBA_HOME_WIN_RATE) -> float:
+             home_win_rate: float = NBA_HOME_WIN_RATE, prior_games: int = PRIOR_GAMES) -> float:
     """On-paper chance team A wins. `home` is 'a', 'b' or None (neutral site)."""
-    p = log5(win_pct(*record_a), win_pct(*record_b))
+    p = log5(win_pct(*record_a, prior_games), win_pct(*record_b, prior_games))
     if home is None:
         return p
     boost = home_win_rate / (1 - home_win_rate)                 # home court as a win/loss ratio multiplier

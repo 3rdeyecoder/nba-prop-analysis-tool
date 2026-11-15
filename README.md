@@ -225,7 +225,7 @@ doubleheaders, duplicate records, NFL season and postseason handling, MLB total 
 outs ↔ innings, strikeout separation, two-way players, atomic writes and retry limits, plus
 Streamlit `AppTest` runs of every page, including independent state between sports.
 
-## Upset Watch model (NBA)
+## Upset Watch models (NBA and NFL)
 
 A win-probability model compares each game with an "on paper" view (records + home court).
 When the model gives the on-paper underdog at least 5 points more (adjustable), the game is flagged
@@ -250,11 +250,39 @@ for **Upset Watch**: the model's opinion, for fun, never betting advice. Flags c
   (travel, time zones, road back-to-backs, altitude), roster continuity, opponent-adjusted form,
   star power, a shooting-luck adjustment, blowout-capped margins, and an underdog "chaos" factor.
 
+
+### NFL
+
+- **Data** (`python -m refresh.nfl_games`, nflverse, CC-BY 4.0): every game since 2010 with listed
+  starting QBs and rest (`data/nfl/games.parquet`), each team's offense per game
+  (`team_games.parquet`) and each quarterback's plays per game (`qb_games.parquet`). Betting columns
+  in the nflverse schedule are never saved. One-time backfill:
+  `python -m refresh.nfl_games --seasons 2010 2011 2012 2013 2014 2015 2016 2017 2018 2019 2020 2021 2022 2023 2024 2025 2026`.
+- **Features** (`sports/nfl_matchup.py`): Elo with margin of victory, offense and defense EPA per play,
+  point margin per game (recent games count more and last season counts a little), the listed
+  starting quarterback's own EPA per play over his recent games on any team, rest/byes, and home
+  field. Relocated teams (OAK/LV, SD/LAC, STL/LA) keep one history. Every feature uses only earlier
+  games; tests check this directly.
+- **On paper** for the NFL: records (ties as half a win, every team starts as if 2-2) + home field
+  (home teams won 54.6% of 2015-2025 regular-season games).
+- **Held-out results, 2016 to 2025** (each season scored by a model trained only on earlier seasons):
+  64.8% of winners picked (on paper 61.4%, raw Elo 64.0%), log loss
+  0.625 (on paper 0.656, raw Elo 0.634). Gradient boosting did worse (0.636).
+  The quarterback rating is the single most useful feature.
+- **Upset Watch backtest:** at +5 points, about 5 flags per week; flagged underdogs
+  won 46.9% vs 34.3% expected on paper, better in 10 of 10 seasons.
+  🚨 alerts won 59% of the time; 👀 live underdogs 35% (on paper 27%).
+- **Locking:** each game is locked in on its own game day (US Eastern) with that day's listed
+  starting QBs; later games this week show as a preview. Ties are voided.
+- **Retrain** after each Super Bowl: `python -m refresh.train_nfl`, then commit `data/models/`.
+
 **The Upset Watch page** (🚨 tab, `views/upsets.py`) shows tonight's games with each team's model
 chance next to its on-paper chance, an adjustable highlight threshold, a "compare any two teams"
 view with the top reasons behind the numbers and a full side-by-side table, and the public record.
 
-**The daily job** (`python -m refresh.upsets`, also run by the morning GitHub bot):
+**The daily job** (`python -m refresh.upsets`, also run by the morning GitHub bot, one step per
+sport; the NBA steps are described here, the NFL works the same way with `nfl_state.parquet` and
+`nfl_predictions.csv.gz`):
 1. saves a small snapshot of every team's numbers (`data/upset_watch/nba_state.parquet` and
    `nba_team_games.parquet`), so the page never recomputes eight seasons of features;
 2. logs a prediction for each of today's games that hasn't tipped off (US Eastern date) in

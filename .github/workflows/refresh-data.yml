@@ -40,6 +40,11 @@ jobs:
         continue-on-error: true
         run: python -m refresh.nba --types regular
 
+      - name: NFL games for Upset Watch (nflverse)
+        id: nfl_games
+        continue-on-error: true
+        run: python -m refresh.nfl_games
+
       - name: MLB (MLB Stats API)
         id: mlb
         continue-on-error: true
@@ -53,23 +58,34 @@ jobs:
             git checkout -- "$@" 2>/dev/null || true
             git clean -fq -- "$@"
           }
-          if [ "${{ steps.nfl.outcome }}" = "failure" ]; then restore data/nfl data/meta/nfl.json; fi
+          if [ "${{ steps.nfl.outcome }}" = "failure" ]; then restore 'data/nfl/player_week_*' 'data/nfl/schedule_*' data/nfl/teams.parquet data/meta/nfl.json; fi
+          if [ "${{ steps.nfl_games.outcome }}" = "failure" ]; then restore data/nfl/games.parquet data/nfl/team_games.parquet data/nfl/qb_games.parquet data/meta/nfl_games.json; fi
           if [ "${{ steps.nba.outcome }}" = "failure" ]; then restore 'data/league_logs_*' data/meta/nba.json; fi
           if [ "${{ steps.mlb.outcome }}" = "failure" ]; then restore data/mlb data/meta/mlb.json; fi
           git status --short
 
-      # Upset Watch: snapshot, lock in today's predictions before tip-off, grade earlier ones.
-      # Runs after the cleanup so it always uses the stored NBA data (fresh or last good).
+      # Upset Watch: snapshot, lock in today's predictions before tip-off/kickoff, grade earlier ones.
+      # Runs after the cleanup so it always uses stored data (fresh or last good). One step per sport,
+      # so a problem with one sport never throws away the other's predictions.
       - name: Upset Watch (NBA)
         id: upsets
         continue-on-error: true
-        run: python -m refresh.upsets
+        run: python -m refresh.upsets --sports NBA
 
-      - name: Drop Upset Watch files if it failed
-        if: steps.upsets.outcome == 'failure'
+      - name: Upset Watch (NFL)
+        id: upsets_nfl
+        continue-on-error: true
+        run: python -m refresh.upsets --sports NFL
+
+      - name: Drop Upset Watch files of a sport that failed
+        if: steps.upsets.outcome == 'failure' || steps.upsets_nfl.outcome == 'failure'
         run: |
-          git checkout -- data/upset_watch data/meta/upset_watch.json 2>/dev/null || true
-          git clean -fq -- data/upset_watch data/meta/upset_watch.json
+          restore() {
+            git checkout -- "$@" 2>/dev/null || true
+            git clean -fq -- "$@"
+          }
+          if [ "${{ steps.upsets.outcome }}" = "failure" ]; then restore 'data/upset_watch/nba_*'; fi
+          if [ "${{ steps.upsets_nfl.outcome }}" = "failure" ]; then restore 'data/upset_watch/nfl_*'; fi
 
       - name: Commit and push if anything changed
         run: |
@@ -91,4 +107,6 @@ jobs:
           echo "- NFL: ${{ steps.nfl.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- NBA: ${{ steps.nba.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- MLB: ${{ steps.mlb.outcome }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Upset Watch: ${{ steps.upsets.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- NFL games (Upset Watch): ${{ steps.nfl_games.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Upset Watch NBA: ${{ steps.upsets.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Upset Watch NFL: ${{ steps.upsets_nfl.outcome }}" >> "$GITHUB_STEP_SUMMARY"

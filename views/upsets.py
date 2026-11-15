@@ -1,15 +1,13 @@
-"""🚨 Upset Watch: model vs. the standings, tonight's games, any matchup, and the public record.
+"""🚨 Upset Watch: model vs. the standings for each sport: upcoming games, any matchup, and the public record.
 The model's opinion, for fun; never betting advice."""
 import json
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from core.cards import LOGO
 from core.ui import viewer_timezone
 from matchup import nba_live, registry, track, upset
-from sports import nba_matchup as m
-from sports import nba_model as nm
 
 CSS = """
 <style>
@@ -58,27 +56,23 @@ DISCLAIMER = ("Upset Watch is our model's opinion, for fun. Win chances describe
               "guarantees, and nothing here is betting advice.")
 
 
-@st.cache_data(show_spinner=False, max_entries=4)
-def _model(mtime: float) -> dict | None:
-    return nm.load_model()
+@st.cache_resource(show_spinner=False, max_entries=8)
+def _module(sport: str, mtimes: tuple):
+    """The sport's live module (model + snapshot); reloaded whenever one of its files changes."""
+    return registry.available()[sport]()
 
 
-@st.cache_data(show_spinner=False, max_entries=4)
-def _snapshot(mtime_state: float, mtime_games: float):
-    return nba_live.load_snapshot()
-
-
-@st.cache_data(show_spinner=False, max_entries=4)
-def _log(mtime: float) -> pd.DataFrame:
-    return track.load(track.log_path("NBA"))
+@st.cache_data(show_spinner=False, max_entries=8)
+def _log(path_str: str, mtime: float) -> pd.DataFrame:
+    return track.load(Path(path_str))
 
 
 def _mtime(p) -> float:
     return p.stat().st_mtime if p.exists() else 0.0
 
 
-def _logo(team_id) -> str:
-    return f'<img src="{LOGO.format(int(team_id))}" alt="">' if team_id is not None and pd.notna(team_id) else ""
+def _img(url) -> str:
+    return f'<img src="{url}" alt="">' if url else ""
 
 
 def win_bar(a: str, b: str, p_a: float) -> str:
@@ -132,128 +126,140 @@ sports = registry.available()
 c1, c2 = st.columns([1, 2], vertical_alignment="center")
 st.session_state.setdefault("uw_sport", "NBA")
 sport = c1.segmented_control("Sport", list(sports), key="uw_sport", label_visibility="collapsed") or "NBA"
-c2.caption(f"{' and '.join(registry.COMING_SOON)} coming soon.")
+if registry.COMING_SOON:
+    c2.caption(f"{' and '.join(registry.COMING_SOON)} coming soon.")
 
-model = _model(_mtime(nm.MODEL_PATH))
-snap = _snapshot(_mtime(nba_live.STATE_PATH), _mtime(nba_live.GAMES_PATH))
-if model is None or snap is None:
-    st.info("Upset Watch isn't set up yet. Run `python -m refresh.train_nba` and then "
-            "`python -m refresh.upsets`, and commit the `data/` folder.")
+cls = sports[sport]
+paths = (cls.model_path(),) + tuple(cls.state_paths()) + (track.log_path(sport),)
+mod = _module(sport, tuple(_mtime(p) for p in paths))
+if not mod.ready:
+    st.info(f"{sport} Upset Watch isn't set up yet. Train the model (`python -m refresh.train_{sport.lower()}`), "
+            "run `python -m refresh.upsets`, and commit the `data/` folder.")
     st.stop()
-state, tg = snap
+state = mod.state
 as_of = pd.Timestamp(state["as_of"].iloc[0]).date()
 through = pd.Timestamp(state["data_through"].iloc[0]).date()
 today = nba_live.today_et()
 tz = viewer_timezone()
+weekly = mod.unit == "week"
 
 st.session_state.setdefault("uw_threshold", int(upset.DEFAULT_THRESHOLD * 100))
 threshold = st.slider("Upset Watch threshold (points above the on-paper chance)", 3, 15, key="uw_threshold",
                       help="Highlights games where the model gives the on-paper underdog at least this many "
                            "points more. The public record always uses the official +5.") / 100
 
-# ---------------------------------------------------------------- tonight
-log = _log(_mtime(track.log_path("NBA")))
-locked = log[log["game_date"] == today.isoformat()]
-st.subheader(f"Tonight · {today:%A, %B} {today.day}")
-if not locked.empty:
-    st.caption(f"Locked in before tip-off from games through {through:%b} {through.day}. "
-               "Predictions are saved once and never changed.")
-    games = locked.sort_values("start_utc")
-    calls = [(g.home, g.away, float(g.home_model_prob), float(g.home_paper_prob), g.start_utc) for g in games.itertuples()]
-elif as_of == today:
-    sched = nba_live.todays_games(today)
-    calls = []
-    for g in sched.itertuples():
-        if g.home in state.index and g.away in state.index:
-            c = nba_live.predict(model, state, tg, g.home, g.away, g.home, today, threshold)
-            calls.append((g.home, g.away, c.p_a, c.paper_a, pd.Timestamp(g.start_utc).isoformat()))
-    if calls:
-        st.caption("Preview: today's predictions get locked in by the morning job.")
+# ---------------------------------------------------------------- upcoming games
+log = _log(str(mod.log_path), _mtime(mod.log_path))
+slate = mod.slate(today)
+title = f"{mod.slate_title} · {today:%A, %B} {today.day}" if not weekly else \
+    f"{mod.slate_title} · {today:%b} {today.day} to {(today + pd.Timedelta(days=6)):%b} {(today + pd.Timedelta(days=6)).day}"
+st.subheader(title)
+locked = log.set_index("game_id") if not log.empty else log
+calls = []                                    # (home, away, p_home, paper_home, start, locked?)
+for g in slate.itertuples():
+    if g.game_id in locked.index:
+        r = locked.loc[g.game_id]
+        calls.append((g.home, g.away, float(r["home_model_prob"]), float(r["home_paper_prob"]), g.start_utc, True))
+    elif as_of == today and pd.Timestamp(g.start_utc) > pd.Timestamp.now(tz="UTC"):
+        c = mod.predict(g.home, g.away, None if g.neutral else g.home, pd.Timestamp(g.start_utc).tz_convert(nba_live.ET).date(),
+                        threshold)
+        calls.append((g.home, g.away, c.p_a, c.paper_a, g.start_utc, False))
+if calls:
+    lock_word = "kickoff" if weekly else "tip-off"
+    st.caption(f"🔒 Locked in on game day before {lock_word}, from games through {through:%b} {through.day}; "
+               "saved once and never changed." + (" Games later this week are a preview until their game day."
+                                                   if weekly else ""))
 else:
-    calls = []
-if not calls:
-    st.info("No NBA games tonight, or today's predictions haven't been made yet. They're locked in each morning.")
+    st.info(f"No {sport} games {'this week' if weekly else 'tonight'}, or today's predictions haven't been made yet. "
+            "They're locked in each morning.")
 
 
 def _open(home, away):
-    st.session_state["uw_a"], st.session_state["uw_b"], st.session_state["uw_home"] = away, home, "B"
+    st.session_state[f"uw_a_{sport}"], st.session_state[f"uw_b_{sport}"] = away, home
+    st.session_state[f"uw_home_{sport}"] = "B"
 
 
 with st.container(horizontal=True, gap="small"):
-    for i, (home, away, p_home, paper_home, start) in enumerate(calls):
+    for i, (home, away, p_home, paper_home, start, is_locked) in enumerate(calls):
         try:
             chk = upset.check(home, away, paper_home, p_home, threshold)
         except ValueError:
             chk = None
         kind = chk.kind if chk else None
         t = pd.Timestamp(start).tz_convert(tz)
+        when = t.strftime("%a %I:%M %p").replace(" 0", " ") if weekly else t.strftime("%I:%M %p").lstrip("0")
+        when += "" if is_locked else " · preview"
         card = {upset.ALERT: " flag", upset.LIVE: " live"}.get(kind, "")
         badge = (f'<span class="uw-badge{" live" if kind == upset.LIVE else ""}">'
                  f'{upset.KIND_LABELS[kind].upper()}</span>') if kind else ""
         why = f'<div class="uw-why">{chk.explain()}</div>' if kind else ""
-        with st.container(width=300, key=f"uw_game_{i}"):
+        with st.container(width=300, key=f"uw_game_{sport}_{i}"):
             st.markdown(
                 f'<div class="uw-game{card}"><div class="uw-head">'
-                f'<span>{t.strftime("%I:%M %p").lstrip("0")}</span>{badge}</div>'
-                f'<div class="uw-teams">{_logo(state.loc[away, "team_id"])}{away}'
-                f'<span style="opacity:.5">@</span>{_logo(state.loc[home, "team_id"])}{home}</div>'
+                f'<span>{when}</span>{badge}</div>'
+                f'<div class="uw-teams">{_img(mod.logo(away))}{away}'
+                f'<span style="opacity:.5">@</span>{_img(mod.logo(home))}{home}</div>'
                 f'{win_bar(away, home, 1 - p_home)}'
                 f'<div class="uw-paper">On paper: {away} {(1-paper_home)*100:.0f}% · {home} {paper_home*100:.0f}%</div>'
                 f"{why}</div>", unsafe_allow_html=True)
-            st.button("Open matchup ↓", key=f"uw_open_{i}", on_click=_open, args=(home, away), width="stretch")
+            st.button("Open matchup ↓", key=f"uw_open_{sport}_{i}", on_click=_open, args=(home, away), width="stretch")
 
 # ---------------------------------------------------------------- compare any two teams
 st.subheader("Compare any two teams")
 teams = list(state.sort_values("team_name")["team"])
 names = dict(zip(state["team"], state["team_name"]))
-if calls and "uw_a" not in st.session_state:
+ka, kb, kh = f"uw_a_{sport}", f"uw_b_{sport}", f"uw_home_{sport}"
+if calls and ka not in st.session_state:
     _open(calls[0][0], calls[0][1])
-st.session_state.setdefault("uw_a", teams[0])
-st.session_state.setdefault("uw_b", teams[1])
-st.session_state.setdefault("uw_home", "B")
+st.session_state.setdefault(ka, teams[0])
+st.session_state.setdefault(kb, teams[1])
+st.session_state.setdefault(kh, "B")
 c1, c2, c3 = st.columns([1.2, 1.2, 1])
-a = c1.selectbox("Team A", teams, key="uw_a", format_func=lambda t: names.get(t, t))
-b = c2.selectbox("Team B", teams, key="uw_b", format_func=lambda t: names.get(t, t))
-venue = c3.radio("Home court", ["A", "B", "Neutral"], key="uw_home", horizontal=True,
+a = c1.selectbox("Team A", teams, key=ka, format_func=lambda t: names.get(t, t))
+b = c2.selectbox("Team B", teams, key=kb, format_func=lambda t: names.get(t, t))
+venue = c3.radio(mod.home_word.capitalize(), ["A", "B", "Neutral"], key=kh, horizontal=True,
                  format_func=lambda v: {"A": a, "B": b, "Neutral": "Neutral"}[v])
 if a == b:
     st.warning("Pick two different teams.")
     st.stop()
 home = {"A": a, "B": b, "Neutral": None}[venue]
-call = nba_live.predict(model, state, tg, a, b, home, today, threshold)
+call = mod.predict(a, b, home, today, threshold)
 
 with st.container(border=True):
-    st.markdown(f'<div class="uw-teams" style="font-size:1.3rem">{_logo(state.loc[a, "team_id"])}{names[a]}'
-                f'<span style="opacity:.5;margin:0 6px">vs</span>{_logo(state.loc[b, "team_id"])}{names[b]}</div>'
+    st.markdown(f'<div class="uw-teams" style="font-size:1.3rem">{_img(mod.logo(a))}{names[a]}'
+                f'<span style="opacity:.5;margin:0 6px">vs</span>{_img(mod.logo(b))}{names[b]}</div>'
                 f'{win_bar(a, b, call.p_a)}'
-                f'<div class="uw-paper">On paper (records + home court): {a} {call.paper_a*100:.0f}% · '
-                f'{b} {(1-call.paper_a)*100:.0f}%</div>', unsafe_allow_html=True)
+                f'<div class="uw-paper">On paper (records + {mod.home_word}): {a} {mod.record(a)}, '
+                f'{call.paper_a*100:.0f}% · {b} {mod.record(b)}, {(1-call.paper_a)*100:.0f}%</div>',
+                unsafe_allow_html=True)
     st.markdown(call_box(call.check, threshold), unsafe_allow_html=True)
-    why = nba_live.reasons(call, state, tg, today)
+    why = mod.reasons(call, today)
     if why:
         st.markdown("**Why the model leans this way**")
         for r in why:
             st.markdown(f"- **{r['factor']}** favors **{r['favors']}** (about {r['points']:.0f} points): {r['fact']}")
     st.caption(f"Team numbers as of {as_of:%b} {as_of.day}, using games through {through:%b} {through.day}. "
-               "Rest is counted from today.")
+               "Rest is counted from today." + (" Quarterbacks are the listed starters for each team's next game."
+                                               if weekly else ""))
 
 with st.expander("Full side-by-side comparison", expanded=False):
-    mod = sports[sport](model=model, snapshot=snap)
     st.markdown(stats_table(mod.get_matchup_stats(a, b, today), a, b), unsafe_allow_html=True)
-    h = m.head_to_head(tg, a, b, pd.Timestamp(today))
+    h = mod.head_to_head(a, b, today)
     if h["games"]:
         recent = " · ".join(f"{d} {a} {pf}-{pa} ({w})" for d, pf, pa, w in h["recent"])
-        st.markdown(f"**Head-to-head, last {nba_live.H2H_SEASONS} seasons:** {a} {h['a_wins']}-{h['b_wins']}, "
+        st.markdown(f"**Head-to-head, {mod.h2h_label}:** {a} {h['a_wins']}-{h['b_wins']}, "
                     f"average margin {h['avg_margin_a']:+.1f} for {a}.  \nRecent: {recent}")
     else:
-        st.markdown(f"**Head-to-head:** no meetings in the last {nba_live.H2H_SEASONS} seasons.")
+        st.markdown(f"**Head-to-head:** no meetings in the {mod.h2h_label}.")
+    if sport == "NFL":
+        st.caption("NFL data: nflverse (CC-BY 4.0).")
 
 # ---------------------------------------------------------------- the record
 st.subheader("The record")
 s = track.summary(log)
-row = s[s["sport"] == "NBA"]
+row = s[s["sport"] == sport]
 if row.empty or int(row["settled"].iloc[0]) == 0:
-    st.info("The live record starts with this season's first locked-in flags. Results appear the morning "
+    st.info(f"The live {sport} record starts with the first locked-in flags. Results appear the morning "
             "after each game, wins and misses alike.")
 else:
     r = row.iloc[0]
@@ -274,13 +280,12 @@ else:
         "Result": recent["result"].fillna("pending"),
     }), hide_index=True, width="stretch")
 
-report_path = nm.MODEL_PATH.with_name("nba_report.json")
-if report_path.exists():
-    rep = json.loads(report_path.read_text())
+if mod.report_path.exists():
+    rep = json.loads(mod.report_path.read_text())
     five = next((x for x in rep.get("upset_watch", []) if abs(x["threshold"] - 0.05) < 1e-9), None)
     if five:
         st.caption(f"Backtest (not live): on {len(rep['held_out_seasons'])} past seasons the model never saw, "
-                   f"+5 flags came about {five['per_night']:.1f} per game night, and those underdogs won "
+                   f"+5 flags came about {five['per_night']:.1f} per {mod.unit}, and those underdogs won "
                    f"{five['upset_rate']*100:.1f}% vs {five['expected_on_paper']*100:.1f}% expected on paper. "
                    "'On paper' is an easy benchmark; the live record above is the real test.")
 st.caption(DISCLAIMER)

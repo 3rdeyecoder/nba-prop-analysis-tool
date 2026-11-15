@@ -25,13 +25,16 @@ st.markdown(
   <h3 style="margin:0;">How Upset Watch works</h3>
   <ul class="muted" style="margin:0.5rem 0 0;">
     <li><b>On paper</b>: each team's chance from its record and home court alone.</li>
-    <li><b>Our model</b>: also weighs player-based roster strength (missing regulars drop out), net rating,
+    <li><b>Our NBA model</b>: also weighs player-based roster strength (missing regulars drop out), net rating,
         recent form, rest and back-to-backs. Tested on 5 past seasons it never saw: it picked 67% of winners,
         and its percentages matched reality within about 2 points.</li>
+    <li><b>Our NFL model</b>: weighs the starting quarterback's own recent play, team strength (Elo and point
+        margin), offense and defense EPA per play, rest and home field. Tested on 10 past seasons it never saw:
+        it picked 65% of winners (records alone: 61%).</li>
     <li><b>Upset Watch</b> flags a game when the model gives the on-paper underdog at least 5 points more.</li>
     <li><b>🚨 Upset alert</b>: the model actually picks the underdog to win. <b>👀 Live underdog</b>: the model
     still expects the favorite to win, but gives the underdog a clearly better shot than their record does.</li>
-    <li>Each morning's predictions are saved before tip-off and never changed, then graded the next day,
+    <li>Each game's prediction is saved on game day before tip-off or kickoff and never changed, then graded the next day,
         so the record includes every miss.</li>
   </ul>
 </div>

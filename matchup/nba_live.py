@@ -206,8 +206,26 @@ def results_from_logs(log: pd.DataFrame, logs: pd.DataFrame, today: date) -> dic
 # ---------------------------------------------------------------- the shared SportModule interface
 
 class NbaModule:
-    """NBA implementation of matchup.base.SportModule, backed by the daily snapshot."""
+    """NBA implementation of matchup.base.SportModule, backed by the daily snapshot, plus what the
+    Upset Watch page needs (the NFL module has the same methods)."""
     sport = "NBA"
+    slate_title = "Tonight"
+    unit = "game night"
+    report_path = nm.MODEL_PATH.with_name("nba_report.json")
+
+    @staticmethod
+    def model_path():
+        return nm.MODEL_PATH
+
+    @staticmethod
+    def state_paths():
+        return (STATE_PATH, GAMES_PATH)
+
+    @property
+    def log_path(self):
+        return track.log_path(self.sport)
+    home_word = "home court"
+    h2h_label = f"last {H2H_SEASONS} seasons"
 
     def __init__(self, model: dict | None = None, snapshot=None):
         self.model = model if model is not None else nm.load_model()
@@ -216,6 +234,38 @@ class NbaModule:
     @property
     def ready(self) -> bool:
         return self.model is not None and self.snapshot is not None
+
+    @property
+    def state(self) -> pd.DataFrame:
+        return self.snapshot[0]
+
+    def logo(self, team: str) -> str | None:
+        from core.cards import LOGO
+        tid = self.state.loc[team, "team_id"] if team in self.state.index else None
+        return LOGO.format(int(tid)) if tid is not None and pd.notna(tid) else None
+
+    def record(self, team: str) -> str:
+        s = self.state.loc[team]
+        return f"{int(s['s_wins'])}-{int(s['s_losses'])}"
+
+    def slate(self, today: date) -> pd.DataFrame:
+        g = todays_games(today)
+        if g.empty:
+            return pd.DataFrame(columns=["game_id", "home", "away", "start_utc", "neutral"])
+        g = g[g["home"].isin(self.state.index) & g["away"].isin(self.state.index)].copy()
+        g["game_id"] = g["game_id"].astype(str)
+        g["start_utc"] = pd.to_datetime(g["start_utc"], utc=True)
+        g["neutral"] = False
+        return g[["game_id", "home", "away", "start_utc", "neutral"]]
+
+    def predict(self, a, b, home, day, threshold=upset.DEFAULT_THRESHOLD) -> MatchupCall:
+        return predict(self.model, *self.snapshot, a, b, home, day, threshold)
+
+    def reasons(self, call, day):
+        return reasons(call, *self.snapshot, day)
+
+    def head_to_head(self, a: str, b: str, day: date) -> dict:
+        return m.head_to_head(self.snapshot[1], a, b, pd.Timestamp(day))
 
     def get_teams(self) -> list[Team]:
         from core.cards import LOGO

@@ -1,0 +1,161 @@
+{
+  "created_utc": "2026-11-15T20:48:04+00:00",
+  "held_out_seasons": [
+    "2016",
+    "2017",
+    "2018",
+    "2019",
+    "2020",
+    "2021",
+    "2022",
+    "2023",
+    "2024",
+    "2025"
+  ],
+  "unit": "week",
+  "scores": {
+    "model": {
+      "log_loss": 0.6251287716401335,
+      "brier": 0.21818895348818781,
+      "accuracy": 0.648491457651763,
+      "games": 2751
+    },
+    "gradient_boosting": {
+      "log_loss": 0.6356372304662011,
+      "brier": 0.22235020793036278,
+      "accuracy": 0.6383133406034169,
+      "games": 2751
+    },
+    "on_paper": {
+      "log_loss": 0.6561942533905551,
+      "brier": 0.23184336386267992,
+      "accuracy": 0.6135950563431479,
+      "games": 2751
+    },
+    "raw_elo": {
+      "log_loss": 0.6341532056540772,
+      "brier": 0.22182262548215032,
+      "accuracy": 0.6401308615049073,
+      "games": 2751
+    }
+  },
+  "calibration": [
+    {
+      "predicted": 0.151374250411923,
+      "actual": 0.14925373134328357,
+      "games": 134
+    },
+    {
+      "predicted": 0.2543393881479567,
+      "actual": 0.27492447129909364,
+      "games": 331
+    },
+    {
+      "predicted": 0.3538743218319842,
+      "actual": 0.3620253164556962,
+      "games": 395
+    },
+    {
+      "predicted": 0.4502856114367218,
+      "actual": 0.4205020920502092,
+      "games": 478
+    },
+    {
+      "predicted": 0.5488081532199608,
+      "actual": 0.5355731225296443,
+      "games": 506
+    },
+    {
+      "predicted": 0.6473460874490967,
+      "actual": 0.6129032258064516,
+      "games": 434
+    },
+    {
+      "predicted": 0.7470827784383363,
+      "actual": 0.7238095238095238,
+      "games": 315
+    },
+    {
+      "predicted": 0.8498209847603706,
+      "actual": 0.8607594936708861,
+      "games": 158
+    }
+  ],
+  "upset_watch": [
+    {
+      "threshold": 0.03,
+      "flags": 1292,
+      "per_night": 6.065727699530516,
+      "upset_rate": 0.46362229102167185,
+      "expected_on_paper": 0.3421806886466785,
+      "expected_by_model": 0.4677310763106002,
+      "seasons_beating_paper": 10,
+      "seasons": 10,
+      "alerts": 564,
+      "alert_upset_rate": 0.5904255319148937,
+      "live": 728,
+      "live_upset_rate": 0.36538461538461536,
+      "live_expected_on_paper": 0.2843320723078436
+    },
+    {
+      "threshold": 0.05,
+      "flags": 1113,
+      "per_night": 5.225352112676056,
+      "upset_rate": 0.46900269541778977,
+      "expected_on_paper": 0.34262312845188225,
+      "expected_by_model": 0.4819959710177969,
+      "seasons_beating_paper": 10,
+      "seasons": 10,
+      "alerts": 547,
+      "alert_upset_rate": 0.5923217550274223,
+      "live": 566,
+      "live_upset_rate": 0.3498233215547703,
+      "live_expected_on_paper": 0.2725330510792252
+    },
+    {
+      "threshold": 0.08,
+      "flags": 849,
+      "per_night": 3.9859154929577465,
+      "upset_rate": 0.5159010600706714,
+      "expected_on_paper": 0.34467195948142626,
+      "expected_by_model": 0.5071367547330745,
+      "seasons_beating_paper": 10,
+      "seasons": 10,
+      "alerts": 478,
+      "alert_upset_rate": 0.6150627615062761,
+      "live": 371,
+      "live_upset_rate": 0.3881401617250674,
+      "live_expected_on_paper": 0.26217149294158265
+    },
+    {
+      "threshold": 0.1,
+      "flags": 713,
+      "per_night": 3.347417840375587,
+      "upset_rate": 0.5385694249649369,
+      "expected_on_paper": 0.3473236873667472,
+      "expected_by_model": 0.5235616647913781,
+      "seasons_beating_paper": 10,
+      "seasons": 10,
+      "alerts": 442,
+      "alert_upset_rate": 0.6153846153846154,
+      "live": 271,
+      "live_upset_rate": 0.4132841328413284,
+      "live_expected_on_paper": 0.2526001156248011
+    },
+    {
+      "threshold": 0.15,
+      "flags": 405,
+      "per_night": 1.9014084507042253,
+      "upset_rate": 0.6,
+      "expected_on_paper": 0.34748113328625263,
+      "expected_by_model": 0.5641294288726253,
+      "seasons_beating_paper": 10,
+      "seasons": 10,
+      "alerts": 298,
+      "alert_upset_rate": 0.6476510067114094,
+      "live": 107,
+      "live_upset_rate": 0.4672897196261682,
+      "live_expected_on_paper": 0.23670588537210602
+    }
+  ]
+}
