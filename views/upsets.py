@@ -21,8 +21,11 @@ CSS = """
 .uw-game.flag { border: 2px solid #ea580c; background: rgba(234, 88, 12, 0.06); }
 .uw-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.82rem !important;
   opacity: 0.75; margin-bottom: 6px; }
+.uw-game.live { border: 2px solid #d97706; background: rgba(245, 158, 11, 0.07); }
 .uw-badge { background: #ea580c; color: #fff; border-radius: 999px; padding: 1px 9px; font-weight: 800;
   font-size: 0.72rem !important; opacity: 1; }
+.uw-badge.live { background: #fde68a; color: #78350f; }
+.uw-why { font-size: 0.82rem !important; font-weight: 600; margin-top: 4px; }
 .uw-teams { display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.05rem !important; }
 .uw-teams img { width: 26px; height: 26px; }
 .uw-pcts { display: flex; justify-content: space-between; margin-top: 8px; font-weight: 800;
@@ -35,6 +38,7 @@ CSS = """
 .uw-paper { font-size: 0.82rem !important; opacity: 0.8; }
 .uw-call { border-radius: 12px; padding: 12px 16px; margin: 8px 0; font-size: 1rem !important; }
 .uw-call.flag { background: rgba(234, 88, 12, 0.12); border-left: 5px solid #ea580c; }
+.uw-call.flag.live { background: rgba(245, 158, 11, 0.12); border-left-color: #d97706; }
 .uw-call.calm { background: rgba(128, 128, 128, 0.08); border-left: 5px solid rgba(128,128,128,0.5); }
 .uw-table { width: 100%; border-collapse: collapse; font-size: 0.92rem !important; }
 .uw-table td, .uw-table th { padding: 5px 8px; border-bottom: 1px solid rgba(128,128,128,0.18); }
@@ -90,8 +94,12 @@ def call_box(chk: upset.UpsetCheck | None, threshold: float) -> str:
         return '<div class="uw-call calm">Even on paper, so there is no underdog here.</div>'
     msg = (f"On paper, <b>{chk.underdog}</b> has a <b>{chk.paper_prob*100:.0f}%</b> chance. "
            f"Our model gives them <b>{chk.model_prob*100:.0f}%</b>")
-    if chk.edge >= threshold - 1e-12:
-        return f'<div class="uw-call flag">🚨 <b>Upset Watch:</b> {msg} ({chk.edge*100:+.0f} points).</div>'
+    if chk.kind == upset.ALERT:
+        return (f'<div class="uw-call flag">🚨 <b>Upset alert:</b> {msg} ({chk.edge*100:+.0f} points), '
+                f'so the model picks <b>{chk.underdog}</b> to win.</div>')
+    if chk.kind == upset.LIVE:
+        return (f'<div class="uw-call flag live">👀 <b>Live underdog:</b> {msg} ({chk.edge*100:+.0f} points). '
+                f'The model still favors <b>{chk.favorite}</b>, but this one is closer than the standings say.</div>')
     if chk.edge <= -threshold:
         return f'<div class="uw-call calm">{msg}. The model likes the favorite, <b>{chk.favorite}</b>, even more.</div>'
     return f'<div class="uw-call calm">{msg}. Close to what the standings say.</div>'
@@ -177,18 +185,21 @@ with st.container(horizontal=True, gap="small"):
             chk = upset.check(home, away, paper_home, p_home, threshold)
         except ValueError:
             chk = None
-        flagged = bool(chk and chk.flagged)
+        kind = chk.kind if chk else None
         t = pd.Timestamp(start).tz_convert(tz)
+        card = {upset.ALERT: " flag", upset.LIVE: " live"}.get(kind, "")
+        badge = (f'<span class="uw-badge{" live" if kind == upset.LIVE else ""}">'
+                 f'{upset.KIND_LABELS[kind].upper()}</span>') if kind else ""
+        why = f'<div class="uw-why">{chk.explain()}</div>' if kind else ""
         with st.container(width=300, key=f"uw_game_{i}"):
             st.markdown(
-                f'<div class="uw-game{" flag" if flagged else ""}"><div class="uw-head">'
-                f'<span>{t.strftime("%I:%M %p").lstrip("0")}</span>'
-                f'{"<span class=uw-badge>🚨 UPSET WATCH</span>" if flagged else ""}</div>'
+                f'<div class="uw-game{card}"><div class="uw-head">'
+                f'<span>{t.strftime("%I:%M %p").lstrip("0")}</span>{badge}</div>'
                 f'<div class="uw-teams">{_logo(state.loc[away, "team_id"])}{away}'
                 f'<span style="opacity:.5">@</span>{_logo(state.loc[home, "team_id"])}{home}</div>'
                 f'{win_bar(away, home, 1 - p_home)}'
                 f'<div class="uw-paper">On paper: {away} {(1-paper_home)*100:.0f}% · {home} {paper_home*100:.0f}%</div>'
-                "</div>", unsafe_allow_html=True)
+                f"{why}</div>", unsafe_allow_html=True)
             st.button("Open matchup ↓", key=f"uw_open_{i}", on_click=_open, args=(home, away), width="stretch")
 
 # ---------------------------------------------------------------- compare any two teams
@@ -256,6 +267,7 @@ else:
     recent = log[log["flagged"]].sort_values("start_utc", ascending=False).head(15)
     st.dataframe(pd.DataFrame({
         "Date": recent["game_date"], "Game": recent["away"] + " @ " + recent["home"],
+        "Type": [upset.KIND_LABELS[upset.kind_of(p, True)] for p in recent["model_prob"]],
         "Underdog": recent["underdog"] + " (" + recent["underdog_record"].fillna("") + ")",
         "On paper": (recent["paper_prob"] * 100).round(0).astype(int).astype(str) + "%",
         "Model": (recent["model_prob"] * 100).round(0).astype(int).astype(str) + "%",

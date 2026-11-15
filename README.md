@@ -229,7 +229,9 @@ Streamlit `AppTest` runs of every page, including independent state between spor
 
 A win-probability model compares each game with an "on paper" view (records + home court).
 When the model gives the on-paper underdog at least 5 points more (adjustable), the game is flagged
-for **Upset Watch**: the model's opinion, for fun, never betting advice.
+for **Upset Watch**: the model's opinion, for fun, never betting advice. Flags come in two kinds:
+**🚨 Upset alert** (the model gives the underdog 50% or more, so it picks them to win) and
+**👀 Live underdog** (the model still has the favorite ahead, just by less than the standings say).
 
 - **Features** (`sports/nba_matchup.py`, `sports/nba_players.py`): player-based roster strength
   (ratings follow players across teams; missing regulars drop out), home court, net rating, Elo,

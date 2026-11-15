@@ -52,6 +52,34 @@ class UpsetCheck:
     def flagged(self) -> bool:
         return self.paper_prob < 0.5 and self.edge >= self.threshold - 1e-12
 
+    @property
+    def kind(self) -> str | None:
+        """'alert': flagged and the model actually picks the on-paper underdog to win.
+        'live': flagged, but the model still expects the favorite to win, just by less than the standings say.
+        None: not flagged."""
+        if not self.flagged:
+            return None
+        return ALERT if self.model_prob >= 0.5 else LIVE
+
+    def explain(self) -> str:
+        """One plain sentence for a card."""
+        if self.kind == ALERT:
+            return f"Model picks {self.underdog} to win despite the worse record."
+        if self.kind == LIVE:
+            return f"Model still favors {self.favorite}, but gives {self.underdog} a better shot than their record."
+        return ""
+
+
+ALERT, LIVE = "alert", "live"
+KIND_LABELS = {ALERT: "🚨 Upset alert", LIVE: "👀 Live underdog"}
+
+
+def kind_of(model_prob: float, flagged: bool) -> str | None:
+    """Same rule as UpsetCheck.kind, for rows already in the prediction log."""
+    if not flagged:
+        return None
+    return ALERT if model_prob >= 0.5 else LIVE
+
 
 def check(team_a: str, team_b: str, paper_a: float, model_a: float,
           threshold: float = DEFAULT_THRESHOLD) -> UpsetCheck:

@@ -68,3 +68,21 @@ def test_empty_log_works_everywhere(tmp_path):
     assert df[df["flagged"]].empty
     s = track.summary(df)
     assert s.loc[0, "flags"] == 0 and s.loc[0, "games_graded"] == 0
+
+
+def test_flags_split_into_upset_alert_and_live_underdog():
+    # model picks the underdog to win
+    a = upset.check("NYK", "TOR", 0.49, 0.62, 0.05)
+    assert a.flagged and a.kind == upset.ALERT and "picks NYK" in a.explain()
+    # flagged, but the model still favors the favorite
+    live = upset.check("IND", "PHI", 0.25, 0.30, 0.05)
+    assert live.flagged and live.kind == upset.LIVE
+    assert live.explain() == "Model still favors PHI, but gives IND a better shot than their record."
+    # exactly 50% by the model counts as picking the underdog (a coin flip against a favorite)
+    assert upset.check("A", "B", 0.40, 0.50, 0.05).kind == upset.ALERT
+    # not flagged: no kind, no sentence
+    calm = upset.check("A", "B", 0.40, 0.42, 0.05)
+    assert calm.kind is None and calm.explain() == ""
+    # logged rows give the same answer
+    for chk in (a, live, calm):
+        assert upset.kind_of(chk.model_prob, chk.flagged) == chk.kind

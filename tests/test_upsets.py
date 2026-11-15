@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from matchup import nba_live, track
+from matchup import nba_live, track, upset
 from sports import nba_matchup as m
 from sports import nba_model as nm
 from tests.test_app import APP
@@ -96,3 +96,32 @@ def test_page_with_and_without_a_snapshot(setup, tmp_path, monkeypatch):
     md = " ".join(x.value for x in at.markdown)
     assert "uw-bar" in md and "Why the model leans this way" in md
     assert any("1-800-GAMBLER" in c.value for c in at.caption)
+
+
+def test_cards_show_both_kinds_of_flags(setup, tmp_path, monkeypatch):
+    """A locked-in night with one upset alert, one live underdog and one calm game."""
+    logs, model, state, tg, sched = setup
+    monkeypatch.setattr(track, "UPSET_DIR", tmp_path)
+    monkeypatch.setattr(nba_live, "STATE_PATH", tmp_path / "nba_state.parquet")
+    monkeypatch.setattr(nba_live, "GAMES_PATH", tmp_path / "nba_team_games.parquet")
+    nba_live.save_snapshot(state.reset_index(drop=True), tg)
+    today = nba_live.today_et().isoformat()
+    teams = list(state.index)[:6]
+    base = {"sport": "NBA", "game_date": today, "threshold": 0.05}
+    rows = []
+    for i, (home_model, home_paper) in enumerate([(0.38, 0.51), (0.70, 0.75), (0.60, 0.61)]):
+        home, away = teams[2 * i], teams[2 * i + 1]
+        chk = upset.check(home, away, home_paper, home_model, 0.05)
+        rows.append({**base, "game_id": f"00226{i:05d}", "start_utc": f"{today}T23:{i}0:00+00:00",
+                     "home": home, "away": away, "underdog": chk.underdog, "favorite": chk.favorite,
+                     "paper_prob": chk.paper_prob, "model_prob": chk.model_prob, "home_model_prob": home_model,
+                     "home_paper_prob": home_paper, "edge": chk.edge, "flagged": chk.flagged})
+    track.append(rows, track.log_path("NBA"))
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.run()
+    at.switch_page("views/upsets.py").run()
+    assert not at.exception, at.exception
+    md = " ".join(x.value for x in at.markdown)
+    assert md.count("UPSET ALERT") == 1 and md.count("LIVE UNDERDOG") == 1
+    assert f"Model picks {teams[1]} to win" in md
+    assert f"Model still favors {teams[2]}, but gives {teams[3]} a better shot" in md

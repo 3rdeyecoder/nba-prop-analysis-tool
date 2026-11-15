@@ -29,6 +29,8 @@ st.markdown(
         recent form, rest and back-to-backs. Tested on 5 past seasons it never saw: it picked 67% of winners,
         and its percentages matched reality within about 2 points.</li>
     <li><b>Upset Watch</b> flags a game when the model gives the on-paper underdog at least 5 points more.</li>
+    <li><b>🚨 Upset alert</b>: the model actually picks the underdog to win. <b>👀 Live underdog</b>: the model
+    still expects the favorite to win, but gives the underdog a clearly better shot than their record does.</li>
     <li>Each morning's predictions are saved before tip-off and never changed, then graded the next day,
         so the record includes every miss.</li>
   </ul>
