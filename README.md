@@ -225,6 +225,36 @@ doubleheaders, duplicate records, NFL season and postseason handling, MLB total 
 outs ↔ innings, strikeout separation, two-way players, atomic writes and retry limits, plus
 Streamlit `AppTest` runs of every page, including independent state between sports.
 
+## Upset Watch model (NBA)
+
+A win-probability model compares each game with an "on paper" view (records + home court).
+When the model gives the on-paper underdog at least 5 points more (adjustable), the game is flagged
+for **Upset Watch**: the model's opinion, for fun, never betting advice.
+
+- **Features** (`sports/nba_matchup.py`, `sports/nba_players.py`): player-based roster strength
+  (ratings follow players across teams; missing regulars drop out), home court, net rating, Elo,
+  form, rest, back-to-backs, games in the last 6 days. Every feature uses only earlier games;
+  tests check this directly.
+- **Model** (`sports/nba_model.py`): logistic regression, chosen over gradient boosting on
+  held-out seasons. Saved as plain numbers in `data/models/nba_logit.json`, so the app needs no
+  ML library.
+- **Held-out results, 2021-22 to 2025-26** (each season scored by a model trained only on earlier
+  seasons): 67.0% of winners picked (on paper 64.2%, raw Elo 65.0%), log loss 0.610 (on paper
+  0.629), and calibration within about 2 points in every probability bucket.
+- **Upset Watch backtest:** at +5 points, about 2 flags per game night; flagged underdogs won
+  48.8% vs 37.4% expected on paper, better in all 5 seasons. "On paper" is an easy benchmark.
+- **Stat Lab** (`sports/nba_statlab.py`): candidate stats are kept only if they improve held-out
+  log loss overall and in at least 4 of 5 seasons. Tested and dropped so far: Fatigue Index
+  (travel, time zones, road back-to-backs, altitude), roster continuity, opponent-adjusted form,
+  star power, a shooting-luck adjustment, blowout-capped margins, and an underdog "chaos" factor.
+
+Retrain once a season ends (or after changing features), then commit `data/models/`:
+
+```bash
+pip install -r requirements-dev.txt
+python -m refresh.train_nba
+```
+
 ## Analytics
 
 Google Analytics 4 is added in `core/analytics.py` with the measurement ID in `core/config.py`

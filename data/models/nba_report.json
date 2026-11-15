@@ -1,0 +1,164 @@
+{
+  "created_utc": "2026-11-15T07:50:50+00:00",
+  "held_out_seasons": [
+    "2021-22",
+    "2022-23",
+    "2023-24",
+    "2024-25",
+    "2025-26"
+  ],
+  "scores": {
+    "model": {
+      "log_loss": 0.6096962027605629,
+      "brier": 0.21087442884983806,
+      "accuracy": 0.6702439024390244,
+      "games": 6150
+    },
+    "gradient_boosting": {
+      "log_loss": 0.6178101152657391,
+      "brier": 0.21427156126538616,
+      "accuracy": 0.66,
+      "games": 6150
+    },
+    "on_paper": {
+      "log_loss": 0.6292564285974115,
+      "brier": 0.21986726817369595,
+      "accuracy": 0.6416260162601626,
+      "games": 6150
+    },
+    "raw_elo": {
+      "log_loss": 0.6315575060916485,
+      "brier": 0.22012871339762513,
+      "accuracy": 0.6495934959349593,
+      "games": 6150
+    }
+  },
+  "calibration": [
+    {
+      "predicted": 0.15110820794114743,
+      "actual": 0.16974169741697417,
+      "games": 271
+    },
+    {
+      "predicted": 0.25467244373576664,
+      "actual": 0.25493716337522443,
+      "games": 557
+    },
+    {
+      "predicted": 0.3500215191577844,
+      "actual": 0.33821733821733824,
+      "games": 819
+    },
+    {
+      "predicted": 0.45208865465193415,
+      "actual": 0.43349282296650715,
+      "games": 1045
+    },
+    {
+      "predicted": 0.5508001531481348,
+      "actual": 0.5704407951598963,
+      "games": 1157
+    },
+    {
+      "predicted": 0.648949349497912,
+      "actual": 0.6522613065326633,
+      "games": 995
+    },
+    {
+      "predicted": 0.7473484238622629,
+      "actual": 0.759235668789809,
+      "games": 785
+    },
+    {
+      "predicted": 0.8498811914660203,
+      "actual": 0.8502879078694817,
+      "games": 521
+    }
+  ],
+  "upset_watch": [
+    {
+      "threshold": 0.03,
+      "flags": 2131,
+      "per_night": 2.611519607843137,
+      "upset_rate": 0.4683247301736274,
+      "expected_on_paper": 0.37017772853334585,
+      "expected_by_model": 0.4725767418073423,
+      "seasons_beating_paper": 5,
+      "seasons": 5
+    },
+    {
+      "threshold": 0.05,
+      "flags": 1698,
+      "per_night": 2.0808823529411766,
+      "upset_rate": 0.4882214369846879,
+      "expected_on_paper": 0.37371510978827105,
+      "expected_by_model": 0.49220278524490185,
+      "seasons_beating_paper": 5,
+      "seasons": 5
+    },
+    {
+      "threshold": 0.08,
+      "flags": 1203,
+      "per_night": 1.474264705882353,
+      "upset_rate": 0.5170407315045719,
+      "expected_on_paper": 0.37828119088849305,
+      "expected_by_model": 0.5191228299817854,
+      "seasons_beating_paper": 5,
+      "seasons": 5
+    },
+    {
+      "threshold": 0.1,
+      "flags": 913,
+      "per_night": 1.1188725490196079,
+      "upset_rate": 0.5301204819277109,
+      "expected_on_paper": 0.38436742039037336,
+      "expected_by_model": 0.5412938889703828,
+      "seasons_beating_paper": 5,
+      "seasons": 5
+    },
+    {
+      "threshold": 0.15,
+      "flags": 392,
+      "per_night": 0.4803921568627451,
+      "upset_rate": 0.5535714285714286,
+      "expected_on_paper": 0.3860057679563877,
+      "expected_by_model": 0.5889917508645288,
+      "seasons_beating_paper": 5,
+      "seasons": 5
+    }
+  ],
+  "stat_lab": [
+    {
+      "candidate": "Fatigue Index (travel, time zones, road back-to-backs, altitude)",
+      "base_log_loss": 0.6096962027605629,
+      "with_candidate": 0.6108866197038668,
+      "change": 0.001190416943303907,
+      "seasons_better": "2 of 5",
+      "keep": false
+    },
+    {
+      "candidate": "Roster continuity",
+      "base_log_loss": 0.6096962027605629,
+      "with_candidate": 0.608980897714151,
+      "change": -0.0007153050464119293,
+      "seasons_better": "3 of 5",
+      "keep": false
+    },
+    {
+      "candidate": "Opponent-adjusted form",
+      "base_log_loss": 0.6096962027605629,
+      "with_candidate": 0.609625277093341,
+      "change": -7.092566722188831e-05,
+      "seasons_better": "2 of 5",
+      "keep": false
+    },
+    {
+      "candidate": "Star power",
+      "base_log_loss": 0.6096962027605629,
+      "with_candidate": 0.6097038024145612,
+      "change": 7.59965399832474e-06,
+      "seasons_better": "3 of 5",
+      "keep": false
+    }
+  ]
+}
