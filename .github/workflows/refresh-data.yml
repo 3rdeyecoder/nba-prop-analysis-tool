@@ -58,6 +58,19 @@ jobs:
           if [ "${{ steps.mlb.outcome }}" = "failure" ]; then restore data/mlb data/meta/mlb.json; fi
           git status --short
 
+      # Upset Watch: snapshot, lock in today's predictions before tip-off, grade earlier ones.
+      # Runs after the cleanup so it always uses the stored NBA data (fresh or last good).
+      - name: Upset Watch (NBA)
+        id: upsets
+        continue-on-error: true
+        run: python -m refresh.upsets
+
+      - name: Drop Upset Watch files if it failed
+        if: steps.upsets.outcome == 'failure'
+        run: |
+          git checkout -- data/upset_watch data/meta/upset_watch.json 2>/dev/null || true
+          git clean -fq -- data/upset_watch data/meta/upset_watch.json
+
       - name: Commit and push if anything changed
         run: |
           git config user.name "github-actions[bot]"
@@ -78,3 +91,4 @@ jobs:
           echo "- NFL: ${{ steps.nfl.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- NBA: ${{ steps.nba.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- MLB: ${{ steps.mlb.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Upset Watch: ${{ steps.upsets.outcome }}" >> "$GITHUB_STEP_SUMMARY"

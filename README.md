@@ -248,6 +248,19 @@ for **Upset Watch**: the model's opinion, for fun, never betting advice.
   (travel, time zones, road back-to-backs, altitude), roster continuity, opponent-adjusted form,
   star power, a shooting-luck adjustment, blowout-capped margins, and an underdog "chaos" factor.
 
+**The Upset Watch page** (🚨 tab, `views/upsets.py`) shows tonight's games with each team's model
+chance next to its on-paper chance, an adjustable highlight threshold, a "compare any two teams"
+view with the top reasons behind the numbers and a full side-by-side table, and the public record.
+
+**The daily job** (`python -m refresh.upsets`, also run by the morning GitHub bot):
+1. saves a small snapshot of every team's numbers (`data/upset_watch/nba_state.parquet` and
+   `nba_team_games.parquet`), so the page never recomputes eight seasons of features;
+2. logs a prediction for each of today's games that hasn't tipped off (US Eastern date) in
+   `data/upset_watch/nba_predictions.csv.gz`, once, never changed afterwards;
+3. grades earlier predictions from the stored game logs (postponed games are voided after a week).
+Run it from your Mac right after `python -m refresh.nba` (after a `git pull`), so predictions use
+last night's games. Each row records the `data_through` date it was made with.
+
 Retrain once a season ends (or after changing features), then commit `data/models/`:
 
 ```bash

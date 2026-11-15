@@ -15,9 +15,22 @@ st.markdown(
 <div class="card">
   <h3 style="margin:0;">What this tool is not</h3>
   <ul class="muted" style="margin:0.5rem 0 0;">
-    <li>Not guaranteed picks or predictions</li>
+    <li>Not guaranteed picks: Upset Watch shows our model's opinion, for fun</li>
     <li>Not a sportsbook, and it shows no odds</li>
     <li>Not betting advice</li>
+  </ul>
+</div>
+
+<div class="card">
+  <h3 style="margin:0;">How Upset Watch works</h3>
+  <ul class="muted" style="margin:0.5rem 0 0;">
+    <li><b>On paper</b>: each team's chance from its record and home court alone.</li>
+    <li><b>Our model</b>: also weighs player-based roster strength (missing regulars drop out), net rating,
+        recent form, rest and back-to-backs. Tested on 5 past seasons it never saw: it picked 67% of winners,
+        and its percentages matched reality within about 2 points.</li>
+    <li><b>Upset Watch</b> flags a game when the model gives the on-paper underdog at least 5 points more.</li>
+    <li>Each morning's predictions are saved before tip-off and never changed, then graded the next day,
+        so the record includes every miss.</li>
   </ul>
 </div>
 

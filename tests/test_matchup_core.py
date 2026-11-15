@@ -33,24 +33,38 @@ def test_upset_check_picks_the_underdog_and_respects_the_threshold():
         upset.check("A", "B", 0.5, 0.6)                                 # even on paper
 
 
-def _flag(game_id, sport="NBA", paper=0.30, model=0.40):
-    return {"sport": sport, "game_id": game_id, "game_date": "2026-11-12", "home": "BOS", "away": "CHA",
-            "underdog": "CHA", "favorite": "BOS", "underdog_record": "4-9", "favorite_record": "9-4",
-            "paper_prob": paper, "model_prob": model, "edge": model - paper, "threshold": 0.05}
+def _row(game_id, sport="NBA", paper=0.30, model=0.40, flagged=True, home_model=0.60, home_paper=0.70):
+    return {"sport": sport, "game_id": game_id, "game_date": "2026-11-12", "start_utc": "2026-11-13T00:30:00+00:00",
+            "home": "BOS", "away": "CHA", "underdog": "CHA", "favorite": "BOS", "underdog_record": "4-9",
+            "favorite_record": "9-4", "paper_prob": paper, "model_prob": model, "home_model_prob": home_model,
+            "home_paper_prob": home_paper, "edge": model - paper, "threshold": 0.05, "flagged": flagged}
 
 
 def test_record_is_append_only_graded_and_compared_with_expectations(tmp_path):
     path = tmp_path / "upsets.csv.gz"
-    assert track.append_flags([_flag("1"), _flag("2"), _flag("3", sport="NFL")], path) == 3
-    assert track.append_flags([_flag("1", model=0.90)], path) == 0             # can't rewrite a flag later
+    assert track.append([_row("1"), _row("2"), _row("3", sport="NFL"), _row("4", flagged=False)], path) == 4
+    assert track.append([_row("1", model=0.90)], path) == 0                     # can't rewrite a prediction later
     df = track.load(path)
     assert df.loc[df.flag_id == "NBA-1", "model_prob"].item() == pytest.approx(0.40)
-    df = track.grade(df, {"NBA-1": ("CHA", 104, 108), "NBA-2": ("BOS", 112, 99), "NFL-3": (None, 20, 20)})
-    assert dict(zip(df.flag_id, df.result)) == {"NBA-1": "upset", "NBA-2": "no upset", "NFL-3": "void"}
+    assert df["flagged"].tolist() == [True, True, True, False]                  # booleans survive the file
+    df = track.grade(df, {"NBA-1": ("CHA", 104, 108), "NBA-2": ("BOS", 112, 99), "NFL-3": (None, 20, 20),
+                          "NBA-4": ("BOS", 110, 90)})
+    assert dict(zip(df.flag_id, df.result)) == {"NBA-1": "upset", "NBA-2": "no upset", "NFL-3": "void",
+                                                "NBA-4": "no upset"}
     s = track.summary(df).set_index("sport")
-    assert s.loc["NBA", "settled"] == 2 and s.loc["NBA", "upsets"] == 1
-    assert s.loc["NBA", "upset_rate"] == 0.5
+    assert s.loc["NBA", "flags"] == 2 and s.loc["NBA", "settled"] == 2      # unflagged game not in the record
+    assert s.loc["NBA", "upsets"] == 1 and s.loc["NBA", "upset_rate"] == 0.5
     assert s.loc["NBA", "expected_on_paper"] == pytest.approx(0.30)
     assert s.loc["NBA", "expected_by_model"] == pytest.approx(0.40)
+    assert s.loc["NBA", "games_graded"] == 3                                  # every graded game counts here
+    assert s.loc["NBA", "model_correct"] == 2 and s.loc["NBA", "paper_correct"] == 2  # both picked BOS
     assert s.loc["NFL", "settled"] == 0 and s.loc["All", "flags"] == 3
     assert "roi" not in s.columns and "units" not in s.columns                 # a scoreboard, not a P&L
+
+
+def test_empty_log_works_everywhere(tmp_path):
+    df = track.load(tmp_path / "none.csv.gz")
+    assert df.empty and df["flagged"].dtype == bool
+    assert df[df["flagged"]].empty
+    s = track.summary(df)
+    assert s.loc[0, "flags"] == 0 and s.loc[0, "games_graded"] == 0
