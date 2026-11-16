@@ -1,0 +1,67 @@
+{
+  "updated_utc": "2026-11-16T09:23:25+00:00",
+  "graded": 0,
+  "dnp": 0,
+  "days": 0,
+  "stats": {
+    "MIN": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null
+    },
+    "PTS": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null,
+      "up": 0,
+      "up_hit": 0,
+      "down": 0,
+      "down_hit": 0
+    },
+    "REB": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null,
+      "up": 0,
+      "up_hit": 0,
+      "down": 0,
+      "down_hit": 0
+    },
+    "AST": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null,
+      "up": 0,
+      "up_hit": 0,
+      "down": 0,
+      "down_hit": 0
+    },
+    "FG3M": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null
+    },
+    "STL": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null
+    },
+    "BLK": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null
+    },
+    "TOV": {
+      "mae_model": null,
+      "mae_season_avg": null,
+      "in_range": null
+    }
+  },
+  "top5": {
+    "picks": 0,
+    "hits": 0,
+    "voided": 0,
+    "nights": 0,
+    "said": null
+  }
+}
