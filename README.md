@@ -298,6 +298,61 @@ pip install -r requirements-dev.txt
 python -m refresh.train_nba
 ```
 
+## Player Projections (NBA)
+
+Every rotation player's minutes, points, rebounds, assists, 3-pointers, steals, blocks and turnovers
+for each night's games (📈 tab). The model's opinion, for fun and research; no sportsbook lines.
+
+- **How it works** (`sports/nba_projections.py`): one Poisson regression per stat (log scale, so
+  effects multiply), saved as plain numbers in `data/models/nba_proj.json` (the app needs no
+  scikit-learn). Inputs: the player's recent minutes and stats (recent games count more),
+  per-minute production, season averages, usage; the opponent's stat-allowed rate per possession
+  vs the league; both teams' pace; share of the team's minutes missing (regulars who sat out the
+  last game) and how that interacts with the player's usage; home/away; rest and back-to-backs;
+  back from an absence; blowout risk (team strength gap); experience.
+- **No future data:** each player's numbers are a running "state" after every game; a game uses
+  the state after his previous game, and tonight uses the state after his latest game. Team
+  context comes from placeholder games run through the same code. Tests check both directly.
+- **Held-out results** (2024-25, 2025-26, 2026-27, each scored by models trained only on
+  earlier seasons; typical miss = mean absolute error):
+
+| Stat | Model | Season average |
+|---|---|---|
+| Minutes | 4.94 | 5.33 |
+| Points | 4.59 | 4.69 |
+| Rebounds | 1.89 | 1.93 |
+| Assists | 1.34 | 1.36 |
+| 3-pointers | 0.89 | 0.90 |
+| Steals | 0.71 | 0.73 |
+| Blocks | 0.52 | 0.51 |
+| Turnovers | 0.89 | 0.91 |
+
+  Single nights are noisy, so the gain over a season average is modest (largest for minutes).
+  The ⬆️/⬇️ flags (projection 25%+ above/below the season average) are where it shows:
+  points ⬆️ finished above average 63% of the time and ⬇️ below it
+  75% (normally 47% finish above);
+  rebounds 61%/76%, assists 59%/76%. 3-pointer flags
+  were not reliable, so they aren't shown. Gradient boosting was no better than the plain model.
+- **Chance above/below his average:** for points, rebounds and assists the page shows the model's
+  chance that a player finishes above or below his season average, from the projection and the
+  stat's spread, then calibrated against how often such calls came true on the held-out seasons
+  (stored in the model file).
+- **Top 5 tonight:** the 5 most confident of those calls each night (one per player, meaningful
+  averages only, skipping players who missed the last game). Held out: they hit
+  75.2% (the model said 74.6%); all 5 hit on 24% of nights and 4+ on
+  62%. Nothing reaches 90% for a single night, and the page says so. The live
+  Top 5 record is kept in `nba_record.json`.
+- **NBA player page:** searching a player who plays tonight shows his projection, flags and chances,
+  with a button for the full breakdown.
+- **Daily job** (`python -m refresh.projections`, also run by the morning GitHub bot after the
+  NBA refresh): locks the day's projections before tip-off in `data/projections/nba/<date>.csv.gz`
+  (one small file per day), grades earlier days from the stored game logs (players who didn't
+  play are voided as "dnp"), and updates `data/projections/nba_record.json`.
+- **Who is projected:** players who played in one of their team's last 10 games and average 8+
+  minutes recently. ⚠️ marks players who missed the team's last game: they may still be out.
+  Injury news after the morning job isn't known to the model; if a player sits, he's voided.
+- **Retrain** each summer: `python -m refresh.train_projections`, then commit `data/models/`.
+
 ## Analytics
 
 Google Analytics 4 is added in `core/analytics.py` with the measurement ID in `core/config.py`

@@ -77,8 +77,13 @@ jobs:
         continue-on-error: true
         run: python -m refresh.upsets --sports NFL
 
-      - name: Drop Upset Watch files of a sport that failed
-        if: steps.upsets.outcome == 'failure' || steps.upsets_nfl.outcome == 'failure'
+      - name: Player Projections (NBA)
+        id: projections
+        continue-on-error: true
+        run: python -m refresh.projections
+
+      - name: Drop Upset Watch / Projections files of a step that failed
+        if: steps.upsets.outcome == 'failure' || steps.upsets_nfl.outcome == 'failure' || steps.projections.outcome == 'failure'
         run: |
           restore() {
             git checkout -- "$@" 2>/dev/null || true
@@ -86,6 +91,7 @@ jobs:
           }
           if [ "${{ steps.upsets.outcome }}" = "failure" ]; then restore 'data/upset_watch/nba_*'; fi
           if [ "${{ steps.upsets_nfl.outcome }}" = "failure" ]; then restore 'data/upset_watch/nfl_*'; fi
+          if [ "${{ steps.projections.outcome }}" = "failure" ]; then restore data/projections data/meta/projections.json; fi
 
       - name: Commit and push if anything changed
         run: |
@@ -110,3 +116,4 @@ jobs:
           echo "- NFL games (Upset Watch): ${{ steps.nfl_games.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Upset Watch NBA: ${{ steps.upsets.outcome }}" >> "$GITHUB_STEP_SUMMARY"
           echo "- Upset Watch NFL: ${{ steps.upsets_nfl.outcome }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Player Projections: ${{ steps.projections.outcome }}" >> "$GITHUB_STEP_SUMMARY"

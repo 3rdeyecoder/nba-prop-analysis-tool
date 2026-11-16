@@ -28,20 +28,21 @@ for _k in list(st.session_state.keys()):
 home = st.Page("views/today.py", title="Today's Lab", icon="🧪", url_path="today", default=True)
 call_it = st.Page("views/callit.py", title="Call It", icon="🎯", url_path="callit")
 upsets = st.Page("views/upsets.py", title="Upset Watch", icon="🚨", url_path="upsets")
+projections = st.Page("views/projections.py", title="Projections", icon="📈", url_path="projections")
 sport_pages = [
     st.Page("views/nba.py", title="NBA", icon="🏀", url_path="nba"),
     st.Page("views/nfl.py", title="NFL", icon="🏈", url_path="nfl"),
     st.Page("views/mlb.py", title="MLB", icon="⚾", url_path="mlb"),
 ]
 about = st.Page("views/about.py", title="About / How it works", icon="ℹ️", url_path="about")
-nav = st.navigation([home] + sport_pages + [upsets, call_it, about], position="hidden")
+nav = st.navigation([home] + sport_pages + [upsets, projections, call_it, about], position="hidden")
 
 with st.container(key="pl_header"):
     ticker.render({"nba": "NBA", "nfl": "NFL", "mlb": "MLB"}.get(nav.url_path))
     st.title(f"{APP_ICON} {APP_NAME}")
     st.caption(APP_SUBTITLE + " · Research and fun, never betting advice.")
     with st.container(horizontal=True, gap="small", key="sport_nav"):
-        for page in [home] + sport_pages + [upsets, call_it]:
+        for page in [home] + sport_pages + [upsets, projections, call_it]:
             st.page_link(page)  # Streamlit adds the page icon
 style.highlight_tab(nav.url_path)
 st.sidebar.page_link(about)

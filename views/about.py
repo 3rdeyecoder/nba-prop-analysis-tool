@@ -22,6 +22,23 @@ st.markdown(
 </div>
 
 <div class="card">
+  <h3 style="margin:0;">How Player Projections work</h3>
+  <ul class="muted" style="margin:0.5rem 0 0;">
+    <li>Every NBA rotation player gets minutes, points, rebounds, assists, 3-pointers, steals, blocks and
+        turnovers each night, with a typical range.</li>
+    <li>The model starts from his recent games and per-minute production, then adjusts for the opponent
+        (how much of each stat it allows), the pace of both teams, teammates who are out, home/away, rest and
+        back-to-backs, coming back from an absence, and blowout risk.</li>
+    <li><b>⬆️/⬇️</b> marks a projection 25%+ above or below his season average. On past seasons the model never
+        saw, ⬆️ points flags finished above average 63% of the time and ⬇️ flags below it 75% of the time.</li>
+    <li><b>Top 5 tonight</b>: the model's 5 most confident calls for a player finishing above or below his
+        season average, with an honest chance. On past seasons they hit about 75% of the time;
+        nothing reaches 90% for a single night.</li>
+    <li>Locked before tip-off and graded the next morning. Players who don't play are voided.</li>
+  </ul>
+</div>
+
+<div class="card">
   <h3 style="margin:0;">How Upset Watch works</h3>
   <ul class="muted" style="margin:0.5rem 0 0;">
     <li><b>On paper</b>: each team's chance from its record and home court alone.</li>

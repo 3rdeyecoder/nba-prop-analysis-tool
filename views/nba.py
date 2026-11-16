@@ -112,6 +112,12 @@ def header(sel: Selection) -> None:
         m[2].metric("Last 10", f"{l10:.1f}", delta=f"{l10 - avg:+.1f} vs avg")
         m[3].metric("Minutes (L5)", f"{m_l5:.1f}", delta=f"{m_l5 - m_avg:+.1f} vs avg")
 
+    try:                                    # tonight's projection, if he plays tonight
+        from core.projection_ui import player_panel
+        player_panel(sel.player_id, sel.stat.col, sel.stat.label)
+    except Exception:  # noqa: BLE001 - projections must never break the research page
+        pass
+
     with st.container(border=True):
         st.subheader(f"Quick hit-rate strip: {sel.stat.label} over {sel.line:g}")
         all_label = "Season" if len(sel.seasons) == 1 else "All games"
