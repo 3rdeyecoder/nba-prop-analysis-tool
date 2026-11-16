@@ -119,3 +119,24 @@ def test_nfl_page(data, tmp_path, monkeypatch):
     md = " ".join(x.value for x in at.markdown)
     assert "uw-bar" in md and "Why the model leans this way" in md and "Quarterback" in md
     assert any("nflverse" in c.value for c in at.caption)
+
+
+def test_game_that_started_before_lock_in_still_shows(data, tmp_path, monkeypatch):
+    """Every game on the slate gets a card: if it kicked off before the morning lock-in, the card
+    says so (and is left out of the record) instead of the game silently disappearing."""
+    games, stats, qbs, model = data
+    monkeypatch.setattr(track, "UPSET_DIR", tmp_path)
+    monkeypatch.setattr(nfl_live, "STATE_PATH", tmp_path / "nfl_state.parquet")
+    monkeypatch.setattr(nfl_live, "QB_RATINGS_PATH", tmp_path / "nfl_qbs.parquet")
+    nfl_live.save_snapshot(nfl_live.build_snapshot(*fm.load(), nba_live.today_et()))
+    start = pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=1)
+    slate = pd.DataFrame({"game_id": ["TEST_MIA_IND"], "home": ["IND"], "away": ["MIA"], "start_utc": [start],
+                          "neutral": [False]})
+    monkeypatch.setattr(nfl_live.NflModule, "slate", lambda self, today: slate)
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.run()
+    at.switch_page("views/upsets.py").run()
+    at.segmented_control(key="uw_sport").set_value("NFL").run()
+    assert not at.exception, at.exception
+    md = " ".join(x.value for x in at.markdown)
+    assert "MIA" in md and "Started before predictions were locked in" in md

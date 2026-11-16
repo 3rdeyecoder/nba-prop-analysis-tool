@@ -257,6 +257,13 @@ class NflModule:
     def reasons(self, call, day):
         return reasons(call, self.state, self.games, day)
 
+    def final_score(self, game_id: str) -> tuple[int, int] | None:
+        """(home, away) points once the game is in the stored data."""
+        g = self.games[self.games["game_id"] == game_id]
+        if g.empty or pd.isna(g["home_score"].iloc[0]):
+            return None
+        return int(g["home_score"].iloc[0]), int(g["away_score"].iloc[0])
+
     def get_teams(self) -> list[Team]:
         return [Team(t, TEAM_NAMES.get(t, t), self.logo(t)) for t in sorted(self.state.index)]
 

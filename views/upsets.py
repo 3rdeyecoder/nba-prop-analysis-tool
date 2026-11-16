@@ -34,6 +34,8 @@ CSS = """
 .uw-bar .a { background: #6d28d9; }
 .uw-bar .b { background: #94a3b8; }
 .uw-paper { font-size: 0.82rem !important; opacity: 0.8; }
+.uw-game.missed { opacity: 0.7; border-style: dashed; }
+.uw-final { font-size: 0.82rem !important; font-weight: 700; margin-top: 4px; }
 .uw-call { border-radius: 12px; padding: 12px 16px; margin: 8px 0; font-size: 1rem !important; }
 .uw-call.flag { background: rgba(234, 88, 12, 0.12); border-left: 5px solid #ea580c; }
 .uw-call.flag.live { background: rgba(245, 158, 11, 0.12); border-left-color: #d97706; }
@@ -155,15 +157,21 @@ title = f"{mod.slate_title} · {today:%A, %B} {today.day}" if not weekly else \
     f"{mod.slate_title} · {today:%b} {today.day} to {(today + pd.Timedelta(days=6)):%b} {(today + pd.Timedelta(days=6)).day}"
 st.subheader(title)
 locked = log.set_index("game_id") if not log.empty else log
-calls = []                                    # (home, away, p_home, paper_home, start, locked?)
+calls = []            # (home, away, p_home, paper_home, start, status, final) status: locked/preview/missed
 for g in slate.itertuples():
     if g.game_id in locked.index:
         r = locked.loc[g.game_id]
-        calls.append((g.home, g.away, float(r["home_model_prob"]), float(r["home_paper_prob"]), g.start_utc, True))
-    elif as_of == today and pd.Timestamp(g.start_utc) > pd.Timestamp.now(tz="UTC"):
-        c = mod.predict(g.home, g.away, None if g.neutral else g.home, pd.Timestamp(g.start_utc).tz_convert(nba_live.ET).date(),
-                        threshold)
-        calls.append((g.home, g.away, c.p_a, c.paper_a, g.start_utc, False))
+        final = (r["home_score"], r["away_score"], r["result"]) if pd.notna(r["winner"]) else None
+        calls.append((g.home, g.away, float(r["home_model_prob"]), float(r["home_paper_prob"]), g.start_utc,
+                      "locked", final))
+    elif pd.Timestamp(g.start_utc) > pd.Timestamp.now(tz="UTC"):
+        if as_of == today:
+            c = mod.predict(g.home, g.away, None if g.neutral else g.home,
+                            pd.Timestamp(g.start_utc).tz_convert(nba_live.ET).date(), threshold)
+            calls.append((g.home, g.away, c.p_a, c.paper_a, g.start_utc, "preview", None))
+    else:                 # started before predictions were locked in (e.g. the morning job didn't run in time)
+        sc = mod.final_score(g.game_id)
+        calls.append((g.home, g.away, None, None, g.start_utc, "missed", (sc[0], sc[1], None) if sc else None))
 if calls:
     lock_word = "kickoff" if weekly else "tip-off"
     st.caption(f"🔒 Locked in on game day before {lock_word}, from games through {through:%b} {through.day}; "
@@ -180,15 +188,29 @@ def _open(home, away):
 
 
 with st.container(horizontal=True, gap="small"):
-    for i, (home, away, p_home, paper_home, start, is_locked) in enumerate(calls):
+    for i, (home, away, p_home, paper_home, start, status, final) in enumerate(calls):
+        t = pd.Timestamp(start).tz_convert(tz)
+        when = t.strftime("%a %I:%M %p").replace(" 0", " ") if weekly else t.strftime("%I:%M %p").lstrip("0")
+        score = (f'<div class="uw-final">Final: {away} {int(final[1])}, {home} {int(final[0])}'
+                 + ({"upset": " · 🎉 Upset!", "no upset": " · No upset"}.get(final[2], "") if final[2] else "")
+                 + "</div>") if final and pd.notna(final[0]) else ""
+        if status == "missed":
+            with st.container(width=300, key=f"uw_game_{sport}_{i}"):
+                st.markdown(
+                    f'<div class="uw-game missed"><div class="uw-head"><span>{when}</span></div>'
+                    f'<div class="uw-teams">{_img(mod.logo(away))}{away}'
+                    f'<span style="opacity:.5">@</span>{_img(mod.logo(home))}{home}</div>'
+                    f'<div class="uw-paper">Started before predictions were locked in, so it\'s not part of '
+                    f'the record.</div>{score}</div>', unsafe_allow_html=True)
+                st.button("Open matchup ↓", key=f"uw_open_{sport}_{i}", on_click=_open, args=(home, away),
+                          width="stretch")
+            continue
         try:
             chk = upset.check(home, away, paper_home, p_home, threshold)
         except ValueError:
             chk = None
         kind = chk.kind if chk else None
-        t = pd.Timestamp(start).tz_convert(tz)
-        when = t.strftime("%a %I:%M %p").replace(" 0", " ") if weekly else t.strftime("%I:%M %p").lstrip("0")
-        when += "" if is_locked else " · preview"
+        when += " · preview" if status == "preview" else ""
         card = {upset.ALERT: " flag", upset.LIVE: " live"}.get(kind, "")
         badge = (f'<span class="uw-badge{" live" if kind == upset.LIVE else ""}">'
                  f'{upset.KIND_LABELS[kind].upper()}</span>') if kind else ""
@@ -201,7 +223,7 @@ with st.container(horizontal=True, gap="small"):
                 f'<span style="opacity:.5">@</span>{_img(mod.logo(home))}{home}</div>'
                 f'{win_bar(away, home, 1 - p_home)}'
                 f'<div class="uw-paper">On paper: {away} {(1-paper_home)*100:.0f}% · {home} {paper_home*100:.0f}%</div>'
-                f"{why}</div>", unsafe_allow_html=True)
+                f"{why}{score}</div>", unsafe_allow_html=True)
             st.button("Open matchup ↓", key=f"uw_open_{sport}_{i}", on_click=_open, args=(home, away), width="stretch")
 
 # ---------------------------------------------------------------- compare any two teams

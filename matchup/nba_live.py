@@ -264,6 +264,9 @@ class NbaModule:
     def reasons(self, call, day):
         return reasons(call, *self.snapshot, day)
 
+    def final_score(self, game_id: str) -> tuple[int, int] | None:
+        return None          # NBA scores arrive with the next morning's game logs
+
     def head_to_head(self, a: str, b: str, day: date) -> dict:
         return m.head_to_head(self.snapshot[1], a, b, pd.Timestamp(day))
 
