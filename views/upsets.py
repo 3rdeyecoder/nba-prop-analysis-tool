@@ -35,6 +35,17 @@ CSS = """
 .uw-bar .b { background: #94a3b8; }
 .uw-paper { font-size: 0.82rem !important; opacity: 0.8; }
 .uw-game.missed { opacity: 0.7; border-style: dashed; }
+/* each game card is one big button: an invisible Streamlit button stretched over the card */
+div[class*="st-key-uw_game_"] { position: relative; }
+div[class*="st-key-uw_game_"] [data-testid="stElementContainer"]:has(.stButton) {
+  position: absolute; inset: 0; z-index: 3; margin: 0; width: 100% !important; height: 100% !important; }
+div[class*="st-key-uw_game_"] .stButton, div[class*="st-key-uw_game_"] .stButton button {
+  width: 100%; height: 100%; min-height: 0; }
+div[class*="st-key-uw_game_"] .stButton button { opacity: 0; cursor: pointer; }
+div[class*="st-key-uw_game_"] .uw-game { transition: transform .12s ease, box-shadow .12s ease; }
+div[class*="st-key-uw_game_"]:hover .uw-game { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,.12); }
+div[class*="st-key-uw_game_"]:has(button:focus-visible) .uw-game { outline: 3px solid #7c3aed; outline-offset: 2px; }
+.uw-tap { font-size: 0.72rem !important; opacity: 0.55; margin-top: 6px; text-align: right; }
 .uw-final { font-size: 0.82rem !important; font-weight: 700; margin-top: 4px; }
 .uw-call { border-radius: 12px; padding: 12px 16px; margin: 8px 0; font-size: 1rem !important; }
 .uw-call.flag { background: rgba(234, 88, 12, 0.12); border-left: 5px solid #ea580c; }
@@ -119,6 +130,8 @@ def stats_table(rows, a: str, b: str) -> str:
 
 # ---------------------------------------------------------------- page
 
+PREVIEW_MAX_AGE_DAYS = 2        # overnight, before the morning job, preview with the latest snapshot
+
 st.markdown(CSS, unsafe_allow_html=True)
 st.markdown('<div class="uw-banner"><div class="uw-title">🚨 Upset Watch</div>'
             '<div class="uw-tag">Our model vs. the standings · Any matchup, side by side · For fun, never '
@@ -157,26 +170,31 @@ title = f"{mod.slate_title} · {today:%A, %B} {today.day}" if not weekly else \
     f"{mod.slate_title} · {today:%b} {today.day} to {(today + pd.Timedelta(days=6)):%b} {(today + pd.Timedelta(days=6)).day}"
 st.subheader(title)
 locked = log.set_index("game_id") if not log.empty else log
-calls = []            # (home, away, p_home, paper_home, start, status, final) status: locked/preview/missed
+calls = []   # (home, away, p_home, paper_home, start, status, final, neutral); status: locked/preview/missed
 for g in slate.itertuples():
     if g.game_id in locked.index:
         r = locked.loc[g.game_id]
         final = (r["home_score"], r["away_score"], r["result"]) if pd.notna(r["winner"]) else None
         calls.append((g.home, g.away, float(r["home_model_prob"]), float(r["home_paper_prob"]), g.start_utc,
-                      "locked", final))
+                      "locked", final, bool(g.neutral)))
     elif pd.Timestamp(g.start_utc) > pd.Timestamp.now(tz="UTC"):
-        if as_of == today:
+        if (today - as_of).days <= PREVIEW_MAX_AGE_DAYS:     # yesterday's snapshot is fine for a preview
             c = mod.predict(g.home, g.away, None if g.neutral else g.home,
                             pd.Timestamp(g.start_utc).tz_convert(nba_live.ET).date(), threshold)
-            calls.append((g.home, g.away, c.p_a, c.paper_a, g.start_utc, "preview", None))
+            calls.append((g.home, g.away, c.p_a, c.paper_a, g.start_utc, "preview", None, bool(g.neutral)))
     else:                 # started before predictions were locked in (e.g. the morning job didn't run in time)
         sc = mod.final_score(g.game_id)
-        calls.append((g.home, g.away, None, None, g.start_utc, "missed", (sc[0], sc[1], None) if sc else None))
+        calls.append((g.home, g.away, None, None, g.start_utc, "missed", (sc[0], sc[1], None) if sc else None,
+                      bool(g.neutral)))
 if calls:
     lock_word = "kickoff" if weekly else "tip-off"
-    st.caption(f"🔒 Locked in on game day before {lock_word}, from games through {through:%b} {through.day}; "
-               "saved once and never changed." + (" Games later this week are a preview until their game day."
-                                                   if weekly else ""))
+    if as_of < today and any(c[5] == "preview" for c in calls):
+        st.caption(f"👀 Preview from yesterday's numbers (games through {through:%b} {through.day}). Today's "
+                   f"predictions are locked in by this morning's update (about 6:15 AM ET), before {lock_word}.")
+    else:
+        st.caption(f"🔒 Locked in on game day before {lock_word}, from games through {through:%b} {through.day}; "
+                   "saved once and never changed." + (" Games later this week are a preview until their game day."
+                                                       if weekly else ""))
 else:
     st.info(f"No {sport} games {'this week' if weekly else 'tonight'}, or today's predictions haven't been made yet. "
             "They're locked in each morning.")
@@ -187,49 +205,109 @@ def _open(home, away):
     st.session_state[f"uw_home_{sport}"] = "B"
 
 
+names = dict(zip(state["team"], state["team_name"]))
+
+
+def matchup_view(a: str, b: str, home: str | None, call, p_a: float, paper_a: float, note: str = "",
+                 day=None) -> None:
+    """Win chances, the verdict, the reasons and the full side-by-side table for A vs B.
+    `p_a`/`paper_a` are what the bar shows (the locked numbers for a locked game)."""
+    try:
+        chk = upset.check(a, b, paper_a, p_a, threshold)
+    except ValueError:
+        chk = None
+    st.markdown(f'<div class="uw-teams" style="font-size:1.3rem">{_img(mod.logo(a))}{names.get(a, a)}'
+                f'<span style="opacity:.5;margin:0 6px">vs</span>{_img(mod.logo(b))}{names.get(b, b)}</div>'
+                f'{win_bar(a, b, p_a)}'
+                f'<div class="uw-paper">On paper (records + {mod.home_word}): {a} {mod.record(a)}, '
+                f'{paper_a*100:.0f}% · {b} {mod.record(b)}, {(1-paper_a)*100:.0f}%</div>',
+                unsafe_allow_html=True)
+    st.markdown(call_box(chk, threshold), unsafe_allow_html=True)
+    if note:
+        st.markdown(note, unsafe_allow_html=True)
+    day = day or today
+    why = mod.reasons(call, day)
+    if why:
+        st.markdown("**Why the model leans this way**")
+        for r in why:
+            st.markdown(f"- **{r['factor']}** favors **{r['favors']}** (about {r['points']:.0f} points): {r['fact']}")
+    st.caption(f"Team numbers as of {as_of:%b} {as_of.day}, using games through {through:%b} {through.day}. "
+               f"Rest is counted to {'today' if day == today else f'{day:%a %b} {day.day}'}." + (" Quarterbacks are the listed starters for each team's next game."
+                                               if weekly else ""))
+    with st.expander("Full side-by-side comparison", expanded=False):
+        st.markdown(stats_table(mod.get_matchup_stats(a, b, today), a, b), unsafe_allow_html=True)
+        h = mod.head_to_head(a, b, today)
+        if h["games"]:
+            recent = " · ".join(f"{d} {a} {pf}-{pa} ({w})" for d, pf, pa, w in h["recent"])
+            st.markdown(f"**Head-to-head, {mod.h2h_label}:** {a} {h['a_wins']}-{h['b_wins']}, "
+                        f"average margin {h['avg_margin_a']:+.1f} for {a}.  \nRecent: {recent}")
+        else:
+            st.markdown(f"**Head-to-head:** no meetings in the {mod.h2h_label}.")
+        if sport == "NFL":
+            st.caption("NFL data: nflverse (CC-BY 4.0).")
+
+
+@st.dialog("Matchup", width="large")
+def game_dialog(home, away, p_home, paper_home, status, final_html, neutral, day):
+    """Pop-up for one game card. Team A = away, team B = home, as on the card."""
+    venue = None if neutral else home
+    call = mod.predict(away, home, venue, day, threshold)
+    if status == "missed":
+        note = ('<div class="uw-paper">This game started before predictions were locked in, so it isn\'t part '
+                "of the record. The chances above use today's numbers.</div>")
+        p_a, paper_a = call.p_a, call.paper_a
+    else:
+        word = "kickoff" if weekly else "tip-off"
+        note = (f'<div class="uw-paper">🔒 Locked in before {word}; these numbers never change.</div>'
+                if status == "locked" else
+                '<div class="uw-paper">Preview: locked in on game day with that day\'s numbers.</div>')
+        p_a, paper_a = 1 - p_home, 1 - paper_home
+        if status == "locked":
+            note += ('<div class="uw-paper">The reasons below use today\'s team numbers, which can differ a '
+                     "little from the morning the game was locked in.</div>")
+    matchup_view(away, home, venue, call, p_a, paper_a, note + (final_html or ""), day)
+
+
 with st.container(horizontal=True, gap="small"):
-    for i, (home, away, p_home, paper_home, start, status, final) in enumerate(calls):
+    for i, (home, away, p_home, paper_home, start, status, final, neutral) in enumerate(calls):
         t = pd.Timestamp(start).tz_convert(tz)
         when = t.strftime("%a %I:%M %p").replace(" 0", " ") if weekly else t.strftime("%I:%M %p").lstrip("0")
         score = (f'<div class="uw-final">Final: {away} {int(final[1])}, {home} {int(final[0])}'
                  + ({"upset": " · 🎉 Upset!", "no upset": " · No upset"}.get(final[2], "") if final[2] else "")
                  + "</div>") if final and pd.notna(final[0]) else ""
         if status == "missed":
-            with st.container(width=300, key=f"uw_game_{sport}_{i}"):
-                st.markdown(
-                    f'<div class="uw-game missed"><div class="uw-head"><span>{when}</span></div>'
+            html = (f'<div class="uw-game missed"><div class="uw-head"><span>{when}</span></div>'
                     f'<div class="uw-teams">{_img(mod.logo(away))}{away}'
                     f'<span style="opacity:.5">@</span>{_img(mod.logo(home))}{home}</div>'
                     f'<div class="uw-paper">Started before predictions were locked in, so it\'s not part of '
-                    f'the record.</div>{score}</div>', unsafe_allow_html=True)
-                st.button("Open matchup ↓", key=f"uw_open_{sport}_{i}", on_click=_open, args=(home, away),
-                          width="stretch")
-            continue
-        try:
-            chk = upset.check(home, away, paper_home, p_home, threshold)
-        except ValueError:
-            chk = None
-        kind = chk.kind if chk else None
-        when += " · preview" if status == "preview" else ""
-        card = {upset.ALERT: " flag", upset.LIVE: " live"}.get(kind, "")
-        badge = (f'<span class="uw-badge{" live" if kind == upset.LIVE else ""}">'
-                 f'{upset.KIND_LABELS[kind].upper()}</span>') if kind else ""
-        why = f'<div class="uw-why">{chk.explain()}</div>' if kind else ""
+                    f'the record.</div>{score}<div class="uw-tap">Tap for details</div></div>')
+        else:
+            try:
+                chk = upset.check(home, away, paper_home, p_home, threshold)
+            except ValueError:
+                chk = None
+            kind = chk.kind if chk else None
+            when += " · preview" if status == "preview" else ""
+            card = {upset.ALERT: " flag", upset.LIVE: " live"}.get(kind, "")
+            badge = (f'<span class="uw-badge{" live" if kind == upset.LIVE else ""}">'
+                     f'{upset.KIND_LABELS[kind].upper()}</span>') if kind else ""
+            why = f'<div class="uw-why">{chk.explain()}</div>' if kind else ""
+            html = (f'<div class="uw-game{card}"><div class="uw-head">'
+                    f'<span>{when}</span>{badge}</div>'
+                    f'<div class="uw-teams">{_img(mod.logo(away))}{away}'
+                    f'<span style="opacity:.5">@</span>{_img(mod.logo(home))}{home}</div>'
+                    f'{win_bar(away, home, 1 - p_home)}'
+                    f'<div class="uw-paper">On paper: {away} {(1-paper_home)*100:.0f}% · {home} {paper_home*100:.0f}%</div>'
+                    f'{why}{score}<div class="uw-tap">Tap for details</div></div>')
         with st.container(width=300, key=f"uw_game_{sport}_{i}"):
-            st.markdown(
-                f'<div class="uw-game{card}"><div class="uw-head">'
-                f'<span>{when}</span>{badge}</div>'
-                f'<div class="uw-teams">{_img(mod.logo(away))}{away}'
-                f'<span style="opacity:.5">@</span>{_img(mod.logo(home))}{home}</div>'
-                f'{win_bar(away, home, 1 - p_home)}'
-                f'<div class="uw-paper">On paper: {away} {(1-paper_home)*100:.0f}% · {home} {paper_home*100:.0f}%</div>'
-                f"{why}{score}</div>", unsafe_allow_html=True)
-            st.button("Open matchup ↓", key=f"uw_open_{sport}_{i}", on_click=_open, args=(home, away), width="stretch")
+            st.markdown(html, unsafe_allow_html=True)
+            if st.button(f"Details: {away} at {home}", key=f"uw_open_{sport}_{i}"):
+                game_dialog(home, away, p_home, paper_home, status, score, neutral,
+                            max(pd.Timestamp(start).tz_convert(nba_live.ET).date(), today))
 
 # ---------------------------------------------------------------- compare any two teams
 st.subheader("Compare any two teams")
 teams = list(state.sort_values("team_name")["team"])
-names = dict(zip(state["team"], state["team_name"]))
 ka, kb, kh = f"uw_a_{sport}", f"uw_b_{sport}", f"uw_home_{sport}"
 if calls and ka not in st.session_state:
     _open(calls[0][0], calls[0][1])
@@ -246,35 +324,8 @@ if a == b:
     st.stop()
 home = {"A": a, "B": b, "Neutral": None}[venue]
 call = mod.predict(a, b, home, today, threshold)
-
 with st.container(border=True):
-    st.markdown(f'<div class="uw-teams" style="font-size:1.3rem">{_img(mod.logo(a))}{names[a]}'
-                f'<span style="opacity:.5;margin:0 6px">vs</span>{_img(mod.logo(b))}{names[b]}</div>'
-                f'{win_bar(a, b, call.p_a)}'
-                f'<div class="uw-paper">On paper (records + {mod.home_word}): {a} {mod.record(a)}, '
-                f'{call.paper_a*100:.0f}% · {b} {mod.record(b)}, {(1-call.paper_a)*100:.0f}%</div>',
-                unsafe_allow_html=True)
-    st.markdown(call_box(call.check, threshold), unsafe_allow_html=True)
-    why = mod.reasons(call, today)
-    if why:
-        st.markdown("**Why the model leans this way**")
-        for r in why:
-            st.markdown(f"- **{r['factor']}** favors **{r['favors']}** (about {r['points']:.0f} points): {r['fact']}")
-    st.caption(f"Team numbers as of {as_of:%b} {as_of.day}, using games through {through:%b} {through.day}. "
-               "Rest is counted from today." + (" Quarterbacks are the listed starters for each team's next game."
-                                               if weekly else ""))
-
-with st.expander("Full side-by-side comparison", expanded=False):
-    st.markdown(stats_table(mod.get_matchup_stats(a, b, today), a, b), unsafe_allow_html=True)
-    h = mod.head_to_head(a, b, today)
-    if h["games"]:
-        recent = " · ".join(f"{d} {a} {pf}-{pa} ({w})" for d, pf, pa, w in h["recent"])
-        st.markdown(f"**Head-to-head, {mod.h2h_label}:** {a} {h['a_wins']}-{h['b_wins']}, "
-                    f"average margin {h['avg_margin_a']:+.1f} for {a}.  \nRecent: {recent}")
-    else:
-        st.markdown(f"**Head-to-head:** no meetings in the {mod.h2h_label}.")
-    if sport == "NFL":
-        st.caption("NFL data: nflverse (CC-BY 4.0).")
+    matchup_view(a, b, home, call, call.p_a, call.paper_a)
 
 # ---------------------------------------------------------------- the record
 st.subheader("The record")

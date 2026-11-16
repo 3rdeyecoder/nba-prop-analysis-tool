@@ -140,3 +140,49 @@ def test_game_that_started_before_lock_in_still_shows(data, tmp_path, monkeypatc
     assert not at.exception, at.exception
     md = " ".join(x.value for x in at.markdown)
     assert "MIA" in md and "Started before predictions were locked in" in md
+
+
+def test_clicking_a_game_card_opens_its_matchup(data, tmp_path, monkeypatch):
+    """No separate 'Open matchup' button: the card itself is clickable and opens a pop-up."""
+    games, stats, qbs, model = data
+    monkeypatch.setattr(track, "UPSET_DIR", tmp_path)
+    monkeypatch.setattr(nfl_live, "STATE_PATH", tmp_path / "nfl_state.parquet")
+    monkeypatch.setattr(nfl_live, "QB_RATINGS_PATH", tmp_path / "nfl_qbs.parquet")
+    nfl_live.save_snapshot(nfl_live.build_snapshot(*fm.load(), nba_live.today_et()))
+    start = pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=3)
+    slate = pd.DataFrame({"game_id": ["TEST_MIA_IND"], "home": ["IND"], "away": ["MIA"], "start_utc": [start],
+                          "neutral": [False]})
+    monkeypatch.setattr(nfl_live.NflModule, "slate", lambda self, today: slate)
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.run()
+    at.switch_page("views/upsets.py").run()
+    at.segmented_control(key="uw_sport").set_value("NFL").run()
+    assert not any("Open matchup" in b.label for b in at.button)
+    before = sum("Why the model leans this way" in m.value for m in at.markdown)
+    at.button(key="uw_open_NFL_0").click().run()
+    assert not at.exception, at.exception
+    md = " ".join(x.value for x in at.markdown)
+    assert sum("Why the model leans this way" in m.value for m in at.markdown) == before + 1   # the pop-up
+    assert "Miami Dolphins" in md and "Indianapolis Colts" in md and "Preview" in md
+
+
+def test_overnight_games_show_as_preview_from_yesterdays_snapshot(data, tmp_path, monkeypatch):
+    """Between midnight and the morning job the newest snapshot is yesterday's; today's games must
+    still be listed (as previews), not disappear."""
+    monkeypatch.setattr(track, "UPSET_DIR", tmp_path)
+    monkeypatch.setattr(nfl_live, "STATE_PATH", tmp_path / "nfl_state.parquet")
+    monkeypatch.setattr(nfl_live, "QB_RATINGS_PATH", tmp_path / "nfl_qbs.parquet")
+    yesterday = nba_live.today_et() - pd.Timedelta(days=1)
+    nfl_live.save_snapshot(nfl_live.build_snapshot(*fm.load(), yesterday))
+    start = pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=6)
+    slate = pd.DataFrame({"game_id": ["TEST_LAC_BAL"], "home": ["BAL"], "away": ["LAC"], "start_utc": [start],
+                          "neutral": [False]})
+    monkeypatch.setattr(nfl_live.NflModule, "slate", lambda self, today: slate)
+    at = AppTest.from_file(APP, default_timeout=120)
+    at.run()
+    at.switch_page("views/upsets.py").run()
+    at.segmented_control(key="uw_sport").set_value("NFL").run()
+    assert not at.exception, at.exception
+    md = " ".join(x.value for x in at.markdown)
+    assert "LAC" in md and "preview" in md
+    assert any("Preview from yesterday's numbers" in c.value for c in at.caption)
