@@ -23,13 +23,40 @@ def _load(paths: tuple[tuple[str, str, float], ...]) -> pd.DataFrame:
     return pd.concat([nba.load_file(Path(p), s, "Regular Season") for s, p, _ in paths], ignore_index=True)
 
 
+TONIGHT_MIN_GAMES = 4      # games vs tonight's opponent needed for a matchup card
+
+
 @st.cache_data(show_spinner=False, max_entries=24)
-def _cards(paths: tuple, stat: str, exclude: frozenset[str]) -> dict[str, pd.DataFrame]:
+def _cards(paths: tuple, stat: str, exclude: frozenset[str], tonight: tuple) -> dict[str, pd.DataFrame]:
+    """Cards for players whose team plays today only. `tonight`: ((team, opponent), ...)."""
     df = _load(paths)
+    playing = dict(tonight)
     last_two = df[df["season_year"] >= df["season_year"].max() - 1]
-    return {"heat": insights.heating_up(last_two, stat, top=6, exclude=exclude),
-            "steady": insights.consistency(last_two, stat, top=6, exclude=exclude),
-            "matchup": insights.matchup_history(df, stat, top=6, exclude=exclude)}
+    return {"heat": insights.heating_up(last_two, stat, top=6, exclude=exclude, playing=playing),
+            "steady": insights.consistency(last_two, stat, top=6, exclude=exclude, playing=playing),
+            "matchup": insights.matchup_history(df, stat, min_games=TONIGHT_MIN_GAMES, top=6, exclude=exclude,
+                                                playing=playing)}
+
+
+def tonight_games() -> dict[str, dict]:
+    """team -> {opp, home, start} for today's NBA games (US Eastern date)."""
+    from matchup import nba_live
+    g = nba_live.todays_games(nba_live.today_et())
+    out = {}
+    for r in g.itertuples():
+        start = pd.Timestamp(r.start_utc)
+        out[r.home] = {"opp": r.away, "home": True, "start": start}
+        out[r.away] = {"opp": r.home, "home": False, "start": start}
+    return out
+
+
+def tonight_line(team: str) -> str:
+    g = TONIGHT.get(team)
+    if not g:
+        return ""
+    t = g["start"].tz_convert(viewer_timezone()) if g["start"].tzinfo else g["start"]
+    return (f'<div class="pc-tonight">Tonight: {team} {"vs" if g["home"] else "@"} <b>{g["opp"]}</b> · '
+            f'{t.strftime("%I:%M %p").lstrip("0")}</div>')
 
 
 def _d(ts) -> str:
@@ -77,16 +104,22 @@ paths = tuple((s, str(p), p.stat().st_mtime) for s, p in files)
 st.header("🧪 Today's Lab")
 today = datetime.now(viewer_timezone())
 c1, c2 = st.columns([2, 1], vertical_alignment="bottom")
-c1.markdown(f"**{today:%A, %B} {today.day}, {today:%Y}** · Starting points from recent NBA games. "
-            "Pick one to open the full analysis.")
+c1.markdown(f"**{today:%A, %B} {today.day}, {today:%Y}** · Starting points for players whose team plays "
+            "today. Pick one to open the full analysis.")
 st.session_state.setdefault("today_stat", "Points")
 label = c2.selectbox("Stat for these cards", list(STATS), key="today_stat")
 stat, unit = STATS[label], UNIT[STATS[label]]
 
 out_list = unavailable.load("nba", today.date())
+TONIGHT = tonight_games()
+if not TONIGHT:
+    st.info("No NBA games today. Today's Lab only recommends players whose team plays today; check back on the "
+            "next game day.")
+    st.stop()
 with st.spinner("Crunching recent games..."):
     df = _load(paths)
-    cards = _cards(paths, stat, frozenset(out_list["player_id"]))
+    cards = _cards(paths, stat, frozenset(out_list["player_id"]),
+                   tuple(sorted((t, g["opp"]) for t, g in TONIGHT.items())))
 
 meta = read_meta("nba")
 st.caption(f"📅 Data through **{_d(df['game_date'].max())}** (latest game stored) · "
@@ -128,19 +161,24 @@ def heat_card(i, r):
                 f"Before: {r['baseline_avg']:.1f} · Min {r['recent_min']:.0f} vs {r['baseline_min']:.0f}",
                 f"Last {r['recent_n']}: {_range(r['recent_first'], r['recent_last'])}<br>"
                 f"Baseline: {r['baseline_n']} games, {_range(r['baseline_first'], r['baseline_last'])}",
-                _link(r, "Last 5"))
+                _link(r, "Last 5"), team_line=tonight_line(r["team"]))
 
 
 def steady_card(i, r):
     player_card(f"steady_{i}", i, r, f"{r['avg']:.1f}", f"{unit} / game",
                 f"± {r['std']:.1f} typical swing", "steady",
                 f"Range {r['low']:g}–{r['high']:g} over {r['n']} games",
-                f"Last {r['n']}: {_range(r['first'], r['last'])}", _link(r, "Last 10"))
+                f"Last {r['n']}: {_range(r['first'], r['last'])}", _link(r, "Last 10"),
+                team_line=tonight_line(r["team"]))
 
 
 def matchup_card(i, r):
     opp_logo = card_ui.logo_img(r.get("opp_team_id") if pd.notna(r.get("opp_team_id")) else None, cls="")
-    team_line = f'<div class="pc-vs">{r["team"]} vs {opp_logo}<b>{r["opponent"]}</b></div>'
+    g = TONIGHT.get(r["team"], {})
+    t = g.get("start")
+    when = f' · {t.tz_convert(viewer_timezone()).strftime("%I:%M %p").lstrip("0")}' if t is not None else ""
+    team_line = (f'<div class="pc-tonight">Tonight: {r["team"]} {"vs" if g.get("home") else "@"} {opp_logo}'
+                 f'<b>{r["opponent"]}</b>{when}</div>')
     player_card(f"match_{i}", i, r, f"{r['opp_avg']:.1f}", f"{unit} vs {r['opponent']}",
                 f"{_arrow(r['change'])} vs overall", "up",
                 f"Overall: {r['overall']:.1f} · {r['n']} games vs {r['opponent']}",
@@ -180,6 +218,15 @@ HERO_CSS = """
 </style>
 """
 st.markdown(HERO_CSS, unsafe_allow_html=True)
+st.markdown("""<style>
+.pc-tonight { display: block; font-size: 0.82rem !important; font-weight: 600; margin: 2px 0 4px; line-height: 1.35 !important; }
+.pc-tonight img { width: 16px !important; height: 16px !important; vertical-align: -3px; margin: 0 2px; display: inline !important; }
+</style>""", unsafe_allow_html=True)
+
+
+def _tonight_text(team: str) -> str:
+    g = TONIGHT.get(team)
+    return f'{team} {"vs" if g["home"] else "@"} {g["opp"]} tonight · ' if g else ""
 
 
 def hero(r: pd.Series) -> None:
@@ -192,7 +239,8 @@ def hero(r: pd.Series) -> None:
             f'<img class="hero-shot" src="{big_shot}" alt="">{logo}</div>'
             f'<div class="hero-body"><div class="hero-title">{r["player_name"]} is up {r["change"]:.1f} {unit} '
             f'a game over the last {r["recent_n"]}</div>'
-            f'<div class="hero-sub">{r["team"]} · {r["recent_avg"]:.1f} {unit} in the last {r["recent_n"]} games, '
+            f'<div class="hero-sub">{_tonight_text(r["team"])}{r["recent_avg"]:.1f} {unit} in the last '
+            f'{r["recent_n"]} games, '
             f'up from {r["baseline_avg"]:.1f} before</div>'
             f'<div class="hero-chips"><span class="up">{_arrow(r["change"])} vs before</span>'
             f'<span>Minutes {r["recent_min"]:.0f} vs {r["baseline_min"]:.0f}</span>'
@@ -211,7 +259,8 @@ def quick_hits() -> None:
         for _, r in cards["steady"].head(2).iterrows():
             hits.append((f"🎯 {r['player_name']}: {r['avg']:.1f} {unit} ± {r['std']:.1f}, last {r['n']}", _link(r, "Last 10")))
         for _, r in cards["matchup"].head(2).iterrows():
-            hits.append((f"🧩 {r['player_name']} vs {r['opponent']}: {r['opp_avg']:.1f} {unit} ({_arrow(r['change'])})",
+            hits.append((f"🧩 {r['player_name']} vs {r['opponent']} tonight: {r['opp_avg']:.1f} {unit} in "
+                         f"{r['n']} past games ({_arrow(r['change'])})",
                          _link(r, "All games", opponent=r["opponent"])))
         if not hits:
             st.caption("No quick hits yet. Check back after a few more games.")
@@ -240,21 +289,23 @@ with side_col:
     quick_hits()
 
 section("🔥 Heating up",
-        "Biggest increase: average of the last 5 games (all this season) vs the 30 games before them. "
+        "Players in today's games with the biggest increase: average of the last 5 games (all this season) vs "
+        "the 30 games before them. "
         f"Requires 15+ baseline games and {insights.MIN_MINUTES}+ minutes a night. A minutes jump usually means "
         "a bigger role; without one, hot stretches often cool off.",
         cards["heat"], heat_card, "Not enough games yet this season. Check back after a few more games.")
 
 section("🎯 Consistency corner",
-        "Steadiest production over each player's last 10 games: smallest spread relative to their average. "
+        "Players in today's games with the steadiest production over their last 10 games: smallest spread "
+        "relative to their average. "
         f"Minimum {insights.MIN_AVG.get(stat, 0):g} {unit} per game. Early in a season the 10 games can include "
         "last season; dates are shown.",
         cards["steady"], steady_card, "No players meet the minimums for this stat.")
 
-section("🧩 Matchup history",
-        f"Largest gap between a player's average against one team and their overall average across the last "
-        f"{len(files)} seasons. Needs 6+ games vs that team. With hundreds of player-team pairs, some big gaps "
-        "happen by chance, so treat these as leads to check, not trends.",
-        cards["matchup"], matchup_card, "No player has enough games against one team yet.")
+section("🧩 Tonight's matchup history",
+        f"Players whose average against TONIGHT's opponent is furthest above their overall average, across the "
+        f"last {len(files)} seasons (including games for a former team). Needs {TONIGHT_MIN_GAMES}+ games vs that "
+        "team. Small samples swing a lot, so treat these as leads to check, not trends.",
+        cards["matchup"], matchup_card, "No player in tonight's games has enough history against tonight's opponent.")
 
 st.caption("Data: stats.nba.com via nba_api. NFL and MLB cards are coming next.")

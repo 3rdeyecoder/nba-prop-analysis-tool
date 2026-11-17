@@ -23,16 +23,37 @@ def _keys(at):
     return {w.key for w in list(at.selectbox) + list(at.multiselect) + list(at.number_input) if w.key}
 
 
-def test_todays_lab_is_home_and_renders():
+def _with_games(monkeypatch, day_games):
+    """Pin 'today's games' so the page test doesn't depend on the real calendar."""
+    import pandas as pd
+    from matchup import nba_live
+    g = pd.DataFrame(day_games, columns=["game_id", "home", "away"])
+    g["start_utc"] = pd.Timestamp.now(tz="UTC") + pd.Timedelta(hours=3)
+    monkeypatch.setattr(nba_live, "todays_games", lambda day, schedule=None: g.copy())
+
+
+def test_todays_lab_is_home_and_renders(monkeypatch):
+    from sports import nba
+    import pandas as pd
+    files = [p for s, t, p in nba.available_files() if t == "Regular Season"]
+    teams = sorted(pd.read_csv(files[-1], usecols=["TEAM_ABBREVIATION"])["TEAM_ABBREVIATION"].unique())
+    _with_games(monkeypatch, [(f"g{i}", teams[2 * i], teams[2 * i + 1]) for i in range(len(teams) // 2)])
     at = _app(page=None)
     assert at.selectbox(key="today_stat").value == "Points"
     titles = [h.value for h in at.subheader]
-    for want in ["🔥 Heating up", "🎯 Consistency corner", "🧩 Matchup history"]:
+    for want in ["🔥 Heating up", "🎯 Consistency corner", "🧩 Tonight's matchup history"]:
         assert want in titles
+    assert any("Tonight:" in m.value or "pc-tonight" in m.value for m in at.markdown)
     for stat in ["Rebounds", "Assists", "3-pointers made", "Pts + Reb + Ast"]:
         at.selectbox(key="today_stat").set_value(stat).run()
         assert not at.exception, (stat, at.exception)
     assert not any(k.startswith(("nba_", "nfl_", "mlb_")) for k in _keys(at))   # sport pages never ran
+
+
+def test_todays_lab_with_no_games_today(monkeypatch):
+    _with_games(monkeypatch, [])
+    at = _app(page=None)
+    assert any("No NBA games today" in i.value for i in at.info)
 
 
 def test_nba_page_renders():

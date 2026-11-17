@@ -182,3 +182,18 @@ def test_expected_value_for_the_stat_picked_on_the_player_page():
                                                    "act_AST": 4.0})])
     graded = expected(done, "PRA", "PRA")
     assert graded["act"] == 43
+
+
+def test_next_game_for_the_no_projection_note():
+    from core.projection_ui import next_game
+    from matchup import nba_live as nl
+    sched = sorted(__import__("sports.nba", fromlist=["DATA_DIR"]).DATA_DIR.glob("nba_schedule_*.parquet"))
+    if not sched:
+        pytest.skip("no stored schedule")
+    s = pd.read_parquet(sched[-1])
+    s = s[s["game_id"].astype(str).str.startswith("002")]
+    first = pd.to_datetime(s["start_utc"], utc=True).dt.tz_convert(nl.ET).dt.date.min()
+    g = s.iloc[0]
+    ng = next_game(g["home"], first)
+    assert ng is not None and ng[0] >= first and isinstance(ng[2], (bool, np.bool_))
+    assert next_game("", first) is None

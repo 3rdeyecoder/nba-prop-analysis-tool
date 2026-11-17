@@ -307,9 +307,46 @@ def expected(r, col: str, label: str) -> dict | None:
     return out
 
 
-def player_panel(player_id, stat_col: str | None = None, stat_label: str | None = None) -> None:
+def next_game(team: str, today) -> tuple | None:
+    """(date, opponent, home?) of the team's next regular-season game from today on (US Eastern)."""
+    from sports import nba
+    files = sorted(nba.DATA_DIR.glob("nba_schedule_*.parquet"))
+    if not files or not team:
+        return None
+    sch = pd.read_parquet(files[-1])
+    sch = sch[sch["game_id"].astype(str).str.startswith("002") & ((sch["home"] == team) | (sch["away"] == team))].copy()
+    sch["d"] = pd.to_datetime(sch["start_utc"], utc=True).dt.tz_convert(nba_live.ET).dt.date
+    sch = sch[sch["d"] >= today].sort_values("d")
+    if sch.empty:
+        return None
+    g = sch.iloc[0]
+    return g["d"], (g["away"] if g["home"] == team else g["home"]), g["home"] == team
+
+
+def _no_projection(team: str | None, today) -> None:
+    """Explain why there's no projection, instead of showing nothing."""
+    posted = pl.day_path(today).exists()
+    ng = next_game(team, today) if team else None
+    with st.container(border=True):
+        st.markdown("**📈 Tonight's projection**")
+        if ng and ng[0] == today and not posted:
+            st.caption(f"{team} plays {'vs' if ng[2] else '@'} {ng[1]} tonight. Tonight's projections are posted "
+                       "each morning (about 6:15 AM ET) and will show here.")
+        elif ng and ng[0] == today:
+            st.caption(f"{team} plays tonight, but he isn't projected: he hasn't played enough recent minutes, "
+                       "or he hasn't played in his team's last 10 games.")
+        elif ng:
+            when = "tomorrow" if (ng[0] - today).days == 1 else f"{ng[0]:%A, %b} {ng[0].day}"
+            st.caption(f"No game tonight. {team}'s next game is {when} {'vs' if ng[2] else '@'} {ng[1]}; "
+                       "his projection is posted that morning (about 6:15 AM ET).")
+        else:
+            st.caption("No upcoming game on the schedule, so there's no projection right now.")
+
+
+def player_panel(player_id, stat_col: str | None = None, stat_label: str | None = None,
+                 team: str | None = None) -> None:
     """Tonight's projection box for one player (NBA player page). Shows last night's graded
-    projection when tonight's aren't posted yet; nothing if he has neither."""
+    projection when tonight's aren't posted yet, otherwise says why there's none."""
     today = nba_live.today_et()
     days = [x for x in pl.all_days() if x <= today][-2:]
     for day in reversed(days):
@@ -362,3 +399,4 @@ def player_panel(player_id, stat_col: str | None = None, stat_label: str | None 
             if st.button("Why? See every stat and the reasons", key=f"pp_panel_{player_id}_{day}"):
                 player_dialog(r)
         return
+    _no_projection(team, today)

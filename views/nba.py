@@ -114,7 +114,7 @@ def header(sel: Selection) -> None:
 
     try:                                    # tonight's projection, if he plays tonight
         from core.projection_ui import player_panel
-        player_panel(sel.player_id, sel.stat.col, sel.stat.label)
+        player_panel(sel.player_id, sel.stat.col, sel.stat.label, str(last["team"]))
     except Exception:  # noqa: BLE001 - projections must never break the research page
         pass
 

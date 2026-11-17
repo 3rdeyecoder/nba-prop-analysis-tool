@@ -37,8 +37,18 @@ def missed_last_game(df: pd.DataFrame) -> pd.DataFrame:
     return out[out["avg_min"] >= MIN_MINUTES].sort_values("avg_min", ascending=False)
 
 
-def _active(df: pd.DataFrame, exclude: frozenset[str] = frozenset()) -> pd.DataFrame:
-    return df[df["player_id"].isin(available_players(df, exclude))]
+def _active(df: pd.DataFrame, exclude: frozenset[str] = frozenset(), playing: dict | None = None) -> pd.DataFrame:
+    """Available players; with `playing` (team -> tonight's opponent), only players whose CURRENT team
+    (the team of their latest game) plays tonight."""
+    d = df[df["player_id"].isin(available_players(df, exclude))]
+    if playing is not None:
+        d = d[d["player_id"].isin(current_team(d).loc[lambda t: t.isin(set(playing))].index)]
+    return d
+
+
+def current_team(df: pd.DataFrame) -> pd.Series:
+    """player_id -> team of his most recent game (so a traded player shows his new team)."""
+    return df.sort_values(["game_date", "game_id"]).groupby("player_id")["team"].last()
 
 
 def _ordered(df: pd.DataFrame) -> pd.DataFrame:
@@ -54,12 +64,13 @@ def _seasons(g: pd.DataFrame) -> list[str]:
 
 
 def heating_up(df: pd.DataFrame, stat: str = "PTS", recent_n: int = 5, baseline_n: int = 30,
-               min_baseline: int = 15, top: int = 5, exclude: frozenset[str] = frozenset()) -> pd.DataFrame:
+               min_baseline: int = 15, top: int = 5, exclude: frozenset[str] = frozenset(),
+               playing: dict | None = None) -> pd.DataFrame:
     """Biggest jump: average of the last `recent_n` games (all this season) vs the
     `baseline_n` games before them (which may reach into last season)."""
     current = df["season_year"].max()
     rows = []
-    for pid, g in _ordered(_active(df, exclude)).groupby("player_id", sort=False):
+    for pid, g in _ordered(_active(df, exclude, playing)).groupby("player_id", sort=False):
         if len(g) < recent_n + min_baseline:
             continue
         recent = g.tail(recent_n)
@@ -82,12 +93,12 @@ def heating_up(df: pd.DataFrame, stat: str = "PTS", recent_n: int = 5, baseline_
 
 
 def consistency(df: pd.DataFrame, stat: str = "PTS", n: int = 10, top: int = 5,
-                exclude: frozenset[str] = frozenset()) -> pd.DataFrame:
+                exclude: frozenset[str] = frozenset(), playing: dict | None = None) -> pd.DataFrame:
     """Steadiest producers: lowest coefficient of variation (std ÷ average) over the last
     `n` games, among players averaging at least MIN_AVG[stat]."""
     floor = MIN_AVG.get(stat, 0)
     rows = []
-    for pid, g in _ordered(_active(df, exclude)).groupby("player_id", sort=False):
+    for pid, g in _ordered(_active(df, exclude, playing)).groupby("player_id", sort=False):
         if len(g) < n:
             continue
         w = g.tail(n)
@@ -105,21 +116,30 @@ def consistency(df: pd.DataFrame, stat: str = "PTS", n: int = 10, top: int = 5,
 
 
 def matchup_history(df: pd.DataFrame, stat: str = "PTS", min_games: int = 6, top: int = 5,
-                    exclude: frozenset[str] = frozenset()) -> pd.DataFrame:
+                    exclude: frozenset[str] = frozenset(), playing: dict | None = None) -> pd.DataFrame:
     """Largest gap between a player's average against one opponent and their overall average,
-    over the seasons in `df`. Needs `min_games` games vs that opponent."""
+    over the seasons in `df`. Needs `min_games` games vs that opponent. With `playing`
+    (team -> tonight's opponent), only players whose current team plays tonight, and only against
+    tonight's opponent (their history vs that team, on any team they've played for)."""
     floor = MIN_AVG.get(stat, 0)
     current = df["season_year"].max()
     this_season = df[df["season_year"] == current]
-    d = df[df["player_id"].isin(available_players(this_season, exclude))]
+    keep = available_players(this_season, exclude)
+    now_team = current_team(this_season)
+    if playing is not None:
+        keep = {p for p in keep if now_team.get(p) in playing}
+    d = _ordered(df[df["player_id"].isin(keep)])
     overall = d.groupby("player_id").agg(overall=(stat, "mean"), overall_n=(stat, "size"),
-                                         player_name=("player_name", "last"), team=("team", "last"))
+                                         player_name=("player_name", "last"))
+    overall["team"] = overall.index.map(now_team)
     overall = overall[overall["overall"] >= floor]
     vs = (d[d["player_id"].isin(overall.index)]
           .groupby(["player_id", "opponent"])
           .agg(opp_avg=(stat, "mean"), n=(stat, "size"), first=("game_date", "min"), last=("game_date", "max"))
           .reset_index())
     vs = vs[vs["n"] >= min_games].join(overall, on="player_id")
+    if playing is not None:
+        vs = vs[vs["opponent"] == vs["team"].map(playing)]
     if vs.empty:
         return vs
     vs["change"] = vs["opp_avg"] - vs["overall"]

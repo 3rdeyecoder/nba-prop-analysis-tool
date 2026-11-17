@@ -92,3 +92,36 @@ def test_missing_or_broken_unavailable_file_means_nobody(tmp_path, monkeypatch):
     bad.write_text("name\nsomebody\n")
     monkeypatch.setattr(unavailable, "PATH", bad)
     assert unavailable.ids("nba") == frozenset()
+
+
+def test_only_players_whose_team_plays_today_against_tonights_opponent():
+    """Bug fix: Today's Lab showed career matchups (e.g. 'Bam vs PHX') for players who weren't
+    playing that team, or weren't playing at all. With `playing`, every card is a player whose
+    CURRENT team plays today, and matchup cards are against tonight's opponent only."""
+    import pandas as pd
+    from sports import insights
+
+    rows = []
+    def game(i, date, pid, name, team, opp, pts):
+        rows.append({"game_id": f"g{i}", "game_date": pd.Timestamp(date), "player_id": pid, "player_name": name,
+                     "team": team, "opponent": opp, "PTS": pts, "MIN": 34, "season": "2026-27",
+                     "season_year": 2026, "TEAM_ID": 1})
+    # a traded star: 8 games for OLD vs WAS (huge), then current team NEW
+    for i in range(8):
+        game(i, f"2026-10-{10 + i:02d}", "p1", "Traded Star", "OLD", "WAS", 40)
+    for i in range(8, 20):
+        game(i, f"2026-10-{10 + i:02d}", "p1", "Traded Star", "NEW", "POR" if i % 2 else "XYZ", 20)
+    # a player whose team doesn't play today
+    for i in range(20):
+        game(100 + i, f"2026-10-{10 + i:02d}", "p2", "Idle Guy", "IDL", "POR", 30)
+    # every team's latest game, so both players count as available
+    df = pd.DataFrame(rows)
+    playing = {"NEW": "POR", "POR": "NEW"}
+
+    m = insights.matchup_history(df, "PTS", min_games=4, top=10, playing=playing)
+    assert set(m["player_id"]) <= {"p1"}
+    assert (m["opponent"] == "POR").all() and (m["team"] == "NEW").all()      # not 'vs WAS', not team OLD
+    assert insights.current_team(df)["p1"] == "NEW"
+    for f in (insights.heating_up(df, "PTS", playing=playing, min_baseline=5),
+              insights.consistency(df, "PTS", playing=playing)):
+        assert f.empty or set(f["team"]) <= set(playing)
