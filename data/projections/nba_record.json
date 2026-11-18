@@ -1,67 +1,67 @@
 {
-  "updated_utc": "2026-11-17T19:55:18+00:00",
-  "graded": 0,
-  "dnp": 0,
-  "days": 0,
+  "updated_utc": "2026-11-18T00:16:43+00:00",
+  "graded": 170,
+  "dnp": 56,
+  "days": 1,
   "stats": {
     "MIN": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null
+      "mae_model": 4.335705882352941,
+      "mae_season_avg": 4.379823529411764,
+      "in_range": 0.7235294117647059
     },
     "PTS": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null,
-      "up": 0,
-      "up_hit": 0,
-      "down": 0,
-      "down_hit": 0
+      "mae_model": 4.392529411764706,
+      "mae_season_avg": 4.387588235294118,
+      "in_range": 0.6647058823529411,
+      "up": 35,
+      "up_hit": 20,
+      "down": 1,
+      "down_hit": 1
     },
     "REB": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null,
-      "up": 0,
-      "up_hit": 0,
+      "mae_model": 1.959058823529412,
+      "mae_season_avg": 1.9321176470588235,
+      "in_range": 0.7470588235294118,
+      "up": 20,
+      "up_hit": 11,
       "down": 0,
       "down_hit": 0
     },
     "AST": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null,
-      "up": 0,
-      "up_hit": 0,
-      "down": 0,
+      "mae_model": 1.376,
+      "mae_season_avg": 1.3691764705882352,
+      "in_range": 0.8470588235294118,
+      "up": 10,
+      "up_hit": 4,
+      "down": 1,
       "down_hit": 0
     },
     "FG3M": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null
+      "mae_model": 0.7969411764705882,
+      "mae_season_avg": 0.7968235294117646,
+      "in_range": 0.9352941176470588
     },
     "STL": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null
+      "mae_model": 0.6841764705882353,
+      "mae_season_avg": 0.6924705882352941,
+      "in_range": 0.9411764705882353
     },
     "BLK": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null
+      "mae_model": 0.48858823529411766,
+      "mae_season_avg": 0.49758823529411766,
+      "in_range": 0.9647058823529412
     },
     "TOV": {
-      "mae_model": null,
-      "mae_season_avg": null,
-      "in_range": null
+      "mae_model": 0.9493529411764706,
+      "mae_season_avg": 0.9580588235294117,
+      "in_range": 0.9176470588235294
     }
   },
   "top5": {
-    "picks": 0,
-    "hits": 0,
-    "voided": 0,
-    "nights": 0,
-    "said": null
+    "picks": 3,
+    "hits": 1,
+    "voided": 2,
+    "nights": 1,
+    "said": 0.7596666666666666
   }
 }
